@@ -3,7 +3,7 @@
 A Windows app for five-fret Santroller Pico guitars with APA102 RGB lights.
 
 - Individual fret colours with a picker or hex input.
-- Optional white lighting while a fret is held.
+- White effect: Off, While held, or Toggle (press once for white, again to restore colour).
 - Brightness control and saved settings.
 - Graphite, Slate, Violet and Sand interface themes, each in light or dark mode.
 - Editable keyboard mappings for frets, strum, Start and Select.

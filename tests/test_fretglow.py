@@ -6,6 +6,17 @@ import customtkinter as ctk
 import fretglow as f
 
 class Tests(unittest.TestCase):
+    def test_toggle_white_on_press_not_hold_or_release(self):
+        effect=f.WhiteEffect();green,red=f.MASKS[:2]
+        self.assertEqual(effect.update(green,'Toggle'),green)
+        self.assertEqual(effect.update(green,'Toggle'),green)
+        self.assertEqual(effect.update(0,'Toggle'),green)
+        self.assertEqual(effect.update(red,'Toggle'),green|red)
+        effect.update(0,'Toggle')
+        self.assertEqual(effect.update(green,'Toggle'),red)
+        self.assertEqual(effect.update(0,'Off'),0)
+        self.assertEqual(effect.update(green,'While held'),green)
+        self.assertEqual(effect.update(0,'While held'),0)
     def test_white_press_toggle_and_release(self):
         original=f.CLASSIC.copy()
         self.assertEqual(f.reactive_colours(original,0x1000,True),['#FFFFFF']+original[1:])
@@ -50,10 +61,11 @@ class Tests(unittest.TestCase):
                     app.dark_mode.set(False);app.change_theme();self.assertEqual(ctk.get_appearance_mode(),'Light')
                     app.dark_mode.set(True);app.change_theme();self.assertEqual(ctk.get_appearance_mode(),'Dark')
                 app.theme.set('Violet');app.select_theme('Violet')
-                app.hexes[0].set('A1B2C3');app.white_pressed.set(False)
+                app.hexes[0].set('A1B2C3');app.white_pressed.set(False);app.white_mode.set('Toggle')
                 self.assertTrue(app.save_profile())
                 app.theme.set('Graphite');app.load_profile()
                 self.assertEqual(app.theme.get(),'Violet');self.assertEqual(app.colours[0],'#A1B2C3');self.assertFalse(app.white_pressed.get())
+                self.assertEqual(app.white_mode.get(),'Toggle')
             finally:
                 app.pool.shutdown()
                 for timer in root.tk.call('after','info'):root.after_cancel(timer)

@@ -200,6 +200,15 @@ def normalise_hex(value):
 def reactive_colours(colours, buttons, white_pressed):
     return ['#FFFFFF' if white_pressed and buttons & mask else colour for mask, colour in zip(MASKS, colours)]
 
+class WhiteEffect:
+    def __init__(self): self.reset()
+    def reset(self, buttons=0): self.previous=buttons; self.latched=0
+    def update(self, buttons, mode):
+        rising=buttons & ~self.previous & sum(MASKS[:5]); self.previous=buttons
+        if mode=='Toggle': self.latched ^= rising; return self.latched
+        self.latched=0
+        return buttons if mode=='While held' else 0
+
 class App:
     def __init__(self, root, profile=None, autoconnect=True):
         self.root = root; root.title('FretGlow'); root.geometry('1000x750'); root.minsize(940, 740)
@@ -210,6 +219,7 @@ class App:
         self.profile = profile or Path(os.environ['LOCALAPPDATA']) / 'FretGlow' / 'profile.json'
         self.colours = CLASSIC.copy(); self.brightness = tk.IntVar(value=30)
         self.white_pressed = tk.BooleanVar(value=True); self.auto_apply = tk.BooleanVar(value=False)
+        self.white_mode=tk.StringVar(value='While held'); self.effect=WhiteEffect()
         self.dark_mode = tk.BooleanVar(value=True)
         self.theme = tk.StringVar(value='Graphite')
         self.enabled = tk.BooleanVar(value=False); self.bindings = [tk.StringVar(value=k) for k in DEFAULT_KEYS]
@@ -254,7 +264,10 @@ class App:
         self.label(brightness_row,'Brightness',12).pack(side='left');self.bright_text=self.label(brightness_row,f'{self.brightness.get()}%',12,MUTED);self.bright_text.pack(side='right')
         self.slider=ctk.CTkSlider(lighting,from_=0,to=100,number_of_steps=100,variable=self.brightness,command=self.change_brightness,progress_color=ACCENT,button_color=ACCENT,button_hover_color=ACCENT_HOVER,fg_color=LINE)
         self.slider.grid(row=2,column=0,sticky='ew',padx=20,pady=(12,20))
-        self.white_switch=self.switch(lighting,'White when pressed',self.white_pressed,self.change_white);self.white_switch.grid(row=3,column=0,sticky='w',padx=20,pady=(0,14))
+        effect_row=ctk.CTkFrame(lighting,fg_color='transparent');effect_row.grid(row=3,column=0,sticky='ew',padx=20,pady=(0,14))
+        self.label(effect_row,'White effect',12).pack(side='left')
+        self.white_menu=ctk.CTkOptionMenu(effect_row,values=['Off','While held','Toggle'],variable=self.white_mode,command=lambda v:self.change_white(),width=125,height=30,fg_color=LINE,button_color=LINE,button_hover_color=HOVER,text_color=FG,dropdown_fg_color=PANEL,dropdown_text_color=FG,dropdown_hover_color=HOVER,font=('Segoe UI',12))
+        self.white_menu.pack(side='right')
         self.switch(lighting,'Apply saved lights on connect',self.auto_apply,self.mark_dirty).grid(row=4,column=0,sticky='w',padx=20,pady=(0,18))
         buttons=ctk.CTkFrame(lighting,fg_color='transparent');buttons.grid(row=5,column=0,sticky='ew',padx=20,pady=(0,18))
         self.btn(buttons,'Apply lights',self.apply,width=123).pack(side='left')
@@ -321,6 +334,8 @@ class App:
         self.bright_text.configure(text=f'{self.brightness.get()}%');self.mark_dirty()
         if self.active:self.applied_brightness=self.brightness.get()
     def change_white(self):
+        self.white_pressed.set(self.white_mode.get()!='Off')
+        self.effect.reset(self.effect.previous)
         self.mark_dirty()
         if not self.active:self.apply()
     def run(self,action,after=None):
@@ -339,7 +354,7 @@ class App:
         try:self.keyboard.find()
         except Exception as e:self.status.set(str(e));return
         self.applied_colours=self.colours.copy();self.applied_brightness=self.brightness.get()
-        self.last_frame=None;self.active=True;self.status.set('Lights active · changes apply live')
+        self.effect.reset();self.last_frame=None;self.active=True;self.status.set('Lights active · changes apply live')
     def restore(self):
         self.active=False;self.last_frame=None;self.run(self.guitar.restore)
     def load_profile(self):
@@ -353,6 +368,8 @@ class App:
             self.theme.set(theme)
             self.dark_mode.set(d.get('dark_mode',True))
             self.colours=colours;self.brightness.set(b);self.white_pressed.set(d.get('white_pressed',True));self.auto_apply.set(d.get('auto_apply',False))
+            mode=d.get('white_mode','While held' if self.white_pressed.get() else 'Off')
+            self.white_mode.set(mode if mode in ('Off','While held','Toggle') else 'While held')
             for v,k in zip(self.bindings,keys):v.set(k)
         except FileNotFoundError:self.save_state.set('Not saved yet')
         except (OSError,ValueError,KeyError,TypeError,AttributeError):self.status.set('Saved settings could not be loaded. Defaults are shown.')
@@ -360,7 +377,7 @@ class App:
         if not self.commit_all():return False
         try:
             self.profile.parent.mkdir(parents=True,exist_ok=True)
-            d=dict(version=3,colours=self.colours,brightness=self.brightness.get(),keys=[v.get() for v in self.bindings],white_pressed=self.white_pressed.get(),auto_apply=self.auto_apply.get(),dark_mode=self.dark_mode.get(),theme=self.theme.get())
+            d=dict(version=4,colours=self.colours,brightness=self.brightness.get(),keys=[v.get() for v in self.bindings],white_pressed=self.white_pressed.get(),white_mode=self.white_mode.get(),auto_apply=self.auto_apply.get(),dark_mode=self.dark_mode.get(),theme=self.theme.get())
             temp=self.profile.with_suffix('.tmp');temp.write_text(json.dumps(d,indent=2));temp.replace(self.profile)
             self.dirty=False;self.save_state.set('Saved');self.status.set('Settings saved');return True
         except OSError as e:self.status.set(f'Could not save: {e}');return False
@@ -394,8 +411,9 @@ class App:
                 if self.enabled.get():
                     if self.keyboard.user.GetAsyncKeyState(0x77)&0x8000:self.stop_keyboard('Stopped with F8')
                     else:self.keyboard.transition(buttons,[v.get() for v in self.bindings])
+                white_buttons=self.effect.update(buttons,self.white_mode.get()) if self.active else 0
                 if self.active and not self.pending and not self.light_future:
-                    colours=reactive_colours(self.applied_colours,buttons,self.white_pressed.get())
+                    colours=reactive_colours(self.applied_colours,white_buttons,True)
                     frame=(tuple(colours),self.applied_brightness)
                     if frame!=self.last_frame:
                         self.light_future=self.pool.submit(self.guitar.apply,colours,self.applied_brightness);self.last_frame=frame
