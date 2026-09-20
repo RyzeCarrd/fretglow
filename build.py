@@ -8,6 +8,7 @@ import sys
 root = Path(__file__).resolve().parent
 subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--windowed',
     '--onedir', '--name', 'FretGlow', '--collect-all', 'libusb_package',
+    '--add-data', 'firmware_assets;firmware_assets',
     '--collect-data', 'customtkinter', 'fretglow.py'], cwd=root, check=True)
 app = root / 'dist' / 'FretGlow'
 notices = app / 'licenses'

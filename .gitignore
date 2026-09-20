@@ -7,3 +7,7 @@ dist/
 profile.json
 .env
 *.log
+firmware_assets/
+*.uf2
+*.bin
+*.elf

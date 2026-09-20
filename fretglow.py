@@ -11,6 +11,8 @@ from tkinter import ttk, colorchooser, messagebox
 from concurrent.futures import ThreadPoolExecutor
 import customtkinter as ctk
 
+import onboard
+import firmware
 import brotli
 import usb.core
 import usb.util
@@ -74,7 +76,7 @@ def packet(index, colour, percent):
     return bytes([index, brightness, *rgb])
 
 class Guitar:
-    def __init__(self): self.dev = None; self.interface = None; self.mapping = []; self.changed = False; self.last_packets = {}
+    def __init__(self): self.dev = None; self.interface = None; self.mapping = []; self.changed = False; self.last_packets = {}; self.onboard = False; self.preview = False
     def connect(self):
         try: self.close()
         except RuntimeError: pass  # Replugging already clears temporary overrides.
@@ -100,6 +102,9 @@ class Guitar:
         except Exception:
             usb.util.dispose_resources(d); raise
         self.dev = d; self.interface = interface; self.last_packets.clear()
+        self.onboard=False; self.preview=False
+        try: onboard.info(d,interface); self.onboard=True
+        except (usb.core.USBError,RuntimeError): pass
         return 'Connected · Santroller Pico · 5 RGB frets'
     def write(self, data):
         if self.dev is None: raise RuntimeError('Connect your guitar first.')
@@ -108,6 +113,8 @@ class Guitar:
     def apply(self, colours, brightness):
         if len(colours) != 5 or len(self.mapping) != 5: raise RuntimeError('Connect your guitar first.')
         packets = [packet(i, c, brightness) for i, c in zip(self.mapping, colours)]
+        if self.onboard and not self.preview:
+            self.dev.ctrl_transfer(0x21,0x74,0,self.interface,bytes([1]),timeout=700); self.preview=True
         self.changed = True
         for data in packets:
             if self.last_packets.get(data[0]) != data:
@@ -122,7 +129,16 @@ class Guitar:
             if errors: raise RuntimeError('Could not restore lights. Reconnect the USB cable to restore them.')
             self.changed = False
             self.last_packets.clear()
+        if self.dev and self.onboard:
+            self.dev.ctrl_transfer(0x21,0x74,0,self.interface,bytes([0]),timeout=700); self.preview=False
+            return 'Guitar lighting resumed'
         return 'Original guitar lighting restored'
+    def push(self, data):
+        if not self.dev: raise RuntimeError('Connect your guitar first.')
+        if not self.onboard: raise RuntimeError('This guitar needs the FretGlow firmware update before saving on the guitar.')
+        result=onboard.push(self.dev,self.interface,data)
+        self.changed=False; self.preview=False; self.last_packets.clear()
+        return result
     def close(self):
         try: self.restore()
         finally:
@@ -211,12 +227,14 @@ class WhiteEffect:
 
 class App:
     def __init__(self, root, profile=None, autoconnect=True):
-        self.root = root; root.title('FretGlow'); root.geometry('1000x750'); root.minsize(940, 740)
+        self.root = root; root.title('FretGlow'); root.geometry('1000x810'); root.minsize(940, 800)
         root.configure(fg_color=BG)
         self.guitar = Guitar(); self.keyboard = Keyboard(); self.pool = ThreadPoolExecutor(max_workers=1)
         self.pending = None; self.after_job = None; self.light_future = None; self.closing = False
         self.active = False; self.last_frame = None; self.dirty = False
         self.profile = profile or Path(os.environ['LOCALAPPDATA']) / 'FretGlow' / 'profile.json'
+        self.firmware_manager=firmware.FirmwareManager(self.profile.parent/'firmware')
+        self.firmware_busy=False; self.firmware_dialog=None
         self.colours = CLASSIC.copy(); self.brightness = tk.IntVar(value=30)
         self.white_pressed = tk.BooleanVar(value=True); self.auto_apply = tk.BooleanVar(value=False)
         self.white_mode=tk.StringVar(value='While held'); self.effect=WhiteEffect()
@@ -257,6 +275,7 @@ class App:
         for name,values in [('Classic',CLASSIC),('Pastel',['#A9D6B0','#F2ADBC','#F5DDA1','#A4C7E8','#EBC29B']),('White',['#FFFFFF']*5)]:
             self.btn(presets,name,lambda v=values:self.preset(v),secondary=True,width=68).pack(side='left',padx=3)
         self.label(left,'Click a swatch or type a hex value.',11,MUTED).grid(row=9,column=0,columnspan=3,sticky='w',padx=24,pady=(5,20))
+        self.btn(left,'Firmware…',self.open_firmware,secondary=True,width=145).grid(row=10,column=0,columnspan=3,sticky='w',padx=24,pady=(0,20))
         right=ctk.CTkFrame(body,fg_color='transparent');right.grid(row=0,column=1,sticky='nsew');right.grid_columnconfigure(0,weight=1)
         lighting=self.card(right);lighting.grid(row=0,column=0,sticky='ew');lighting.grid_columnconfigure(0,weight=1)
         self.label(lighting,'Lighting',17,bold=True).grid(row=0,column=0,sticky='w',padx=20,pady=(18,12))
@@ -272,13 +291,15 @@ class App:
         buttons=ctk.CTkFrame(lighting,fg_color='transparent');buttons.grid(row=5,column=0,sticky='ew',padx=20,pady=(0,18))
         self.btn(buttons,'Apply lights',self.apply,width=123).pack(side='left')
         self.btn(buttons,'Restore',self.restore,secondary=True,width=90).pack(side='right')
+        self.btn(lighting,'Push to guitar',self.push_to_guitar,width=220).grid(row=6,column=0,sticky='ew',padx=20,pady=(0,10))
+        self.label(lighting,'Saved on guitar · no app needed',11,MUTED).grid(row=7,column=0,sticky='w',padx=20,pady=(0,16))
         keyboard=self.card(right);keyboard.grid(row=1,column=0,sticky='ew',pady=(16,0));keyboard.grid_columnconfigure(0,weight=1)
         top=ctk.CTkFrame(keyboard,fg_color='transparent');top.grid(row=0,column=0,columnspan=2,sticky='ew',padx=20,pady=(18,10))
         self.label(top,'Keyboard',17,bold=True).pack(side='left')
         self.key_switch=self.switch(top,'',self.enabled,self.toggle_keyboard);self.key_switch.configure(width=42);self.key_switch.pack(side='right')
         for i in range(5,9):
-            self.label(keyboard,CONTROLS[i],12).grid(row=i-4,column=0,sticky='w',padx=20,pady=5)
-            combo=self.key_menu(keyboard,self.bindings[i]);combo.grid(row=i-4,column=1,padx=(0,20),pady=5);self.combos.append(combo)
+            self.label(keyboard,CONTROLS[i],12).grid(row=i-4,column=0,sticky='w',padx=20,pady=3)
+            combo=self.key_menu(keyboard,self.bindings[i]);combo.configure(height=30);combo.grid(row=i-4,column=1,padx=(0,20),pady=3);self.combos.append(combo)
         self.label(keyboard,'',11,MUTED,textvariable=self.key_status,wraplength=265).grid(row=5,column=0,columnspan=2,sticky='w',padx=20,pady=(10,16))
         footer=ctk.CTkFrame(root,fg_color='transparent');footer.grid(row=2,column=0,sticky='ew',padx=30,pady=(18,24))
         self.label(footer,'',12,MUTED,textvariable=self.status,wraplength=590).pack(side='left')
@@ -339,15 +360,18 @@ class App:
         self.mark_dirty()
         if not self.active:self.apply()
     def run(self,action,after=None):
+        if self.firmware_busy:self.status.set('Firmware transfer in progress. Keep USB connected.');return
         if self.pending or self.closing:self.status.set('Please wait for the current operation.');return
         self.pending=self.pool.submit(action);self.after_job=after;self.status.set('Working…')
     def connect(self):
+        if self.firmware_busy:return
         self.active=False;self.stop_keyboard();self.connection.set('Connecting…')
         def connected():
             self.connection.set('Connected · Pico')
             if self.auto_apply.get():self.apply()
         self.run(self.guitar.connect,connected)
     def apply(self):
+        if self.firmware_busy:return
         if not self.commit_all():return
         if not self.guitar.dev:self.status.set('Connect the guitar first.');return
         if self.pending:self.status.set('Please wait for the current operation.');return
@@ -357,6 +381,31 @@ class App:
         self.effect.reset();self.last_frame=None;self.active=True;self.status.set('Lights active · changes apply live')
     def restore(self):
         self.active=False;self.last_frame=None;self.run(self.guitar.restore)
+    def push_to_guitar(self):
+        if self.firmware_busy:return
+        if self.pending: self.status.set('Please wait for the current operation.'); return
+        if not self.commit_all(): return
+        try: data=onboard.encode(self.colours,self.brightness.get(),self.white_mode.get(),[v.get() for v in self.bindings])
+        except (ValueError,KeyError) as e: self.status.set(str(e)); return
+        self.active=False; self.last_frame=None; self.stop_keyboard()
+        self.save_profile()
+        self.run(lambda:self.guitar.push(data))
+    def open_firmware(self):
+        if self.firmware_dialog and self.firmware_dialog.window.winfo_exists():
+            self.firmware_dialog.window.lift();return
+        from firmware_ui import FirmwareDialog
+        self.firmware_dialog=FirmwareDialog(self,THEMES[self.theme.get()])
+    def watch_firmware(self,job):
+        state=self.firmware_manager.state(job);message=state['message'];self.status.set(message)
+        dialog=self.firmware_dialog
+        if dialog and dialog.window.winfo_exists():dialog.status.configure(text=message)
+        if state['status']=='running':self.root.after(300,lambda:self.watch_firmware(job));return
+        self.firmware_busy=False
+        if dialog and dialog.window.winfo_exists():dialog.set_busy(False)
+        self.connection.set('Click Connect')
+        if state['status']=='complete':
+            def connected():self.connection.set('Connected · Pico');self.status.set(message)
+            self.run(self.guitar.connect,connected)
     def load_profile(self):
         try:
             d=json.loads(self.profile.read_text());colours=[normalise_hex(c) for c in d['colours']];keys=d['keys'];b=d['brightness']
@@ -388,6 +437,7 @@ class App:
         self.key_status.set(text)
         for c in self.combos:c.configure(state='readonly')
     def toggle_keyboard(self):
+        if self.firmware_busy:self.stop_keyboard('Firmware transfer in progress');return
         if not self.enabled.get():self.stop_keyboard();return
         try:self.keyboard.find()
         except Exception as e:self.stop_keyboard(str(e));return
@@ -422,6 +472,7 @@ class App:
         self.root.after(8,self.tick)
     def close(self):
         if self.closing:return
+        if self.firmware_busy:self.status.set('Please wait for the firmware transfer to finish. Keep USB connected.');return
         self.stop_keyboard()
         if self.dirty and not self.save_profile():return
         self.active=False;self.closing=True;self.status.set('Restoring lights…');future=self.pool.submit(self.guitar.close)
@@ -434,6 +485,8 @@ class App:
 
 
 def main():
+    if len(sys.argv)==3 and sys.argv[1]=='--firmware-job':
+        firmware.run_worker(Path(sys.argv[2]));return
     if len(sys.argv) == 3 and sys.argv[1] == '--self-test':
         g = Guitar()
         try:
