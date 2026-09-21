@@ -3,11 +3,11 @@
 A Windows app for five-fret Santroller Pico guitars with APA102 RGB lights.
 
 - Individual fret colours with a picker or hex input.
-- White effect: Off, While held, or Toggle (press once for white, again to restore colour).
+- Press effect in any colour: Off, While held, or Toggle (press once for the effect colour, again to restore the fret colour).
 - Brightness control and saved settings.
 - Graphite, Slate, Violet and Sand interface themes, each in light or dark mode.
-- Editable keyboard mappings for frets, strum, Start and Select.
-- Save colours, white effects and keys directly on supported FretGlow firmware.
+- Click a binding and press your PC keyboard to record it, including navigation, modifier and numpad keys.
+- Save colours, press effects and keys directly on supported FretGlow firmware.
 - Generate a customised firmware file, install it, and undo an installation.
 
 ## Use
@@ -15,27 +15,32 @@ A Windows app for five-fret Santroller Pico guitars with APA102 RGB lights.
 Download the Windows ZIP from **Releases**, extract it, and open `FretGlow.exe`.
 Keep the `_internal` folder beside the executable. Close any older copy first.
 
-Connect the guitar, choose colours and click **Apply lights**. Changes then apply
-live. **Save settings** remembers your colours, mappings and theme. Enable
+Click **Tutorial** in the app for a guided walkthrough, or read [the tutorial](TUTORIAL.md).
+
+Connect the guitar, choose colours and click **Preview**. Changes then apply
+live. **Save on this PC** remembers your colours, mappings and theme in Windows. Enable
 **Apply saved lights on connect** to restore your lighting when connecting.
 
 Keyboard mode sends keys to the focused application. Default fret keys are
 **A, S, K, L, M**. **F8** stops keyboard mode. Disable it before editing mappings.
 
-**Apply lights** previews colours with the app open. **Push to guitar** saves them,
-the white effect and your key mappings on FretGlow firmware, with readback verification.
-Closing the app or clicking **Restore** ends the preview and resumes the guitar's lighting.
+**Save to guitar** stores colours, the press-effect colour and your key mappings on
+FretGlow firmware, with readback verification. This is the button for everyday changes.
+Closing the app or clicking **End preview** ends the preview and resumes the guitar's lighting.
+Custom effect colours and extended keys need the latest guitar update. Existing saved
+profiles keep their keys and default to a white effect colour until you change it.
 
 ## Firmware
 
-Open **Firmware…** after choosing colours, brightness, white effect and keys.
+Firmware is the software inside your guitar. Open **Guitar setup** to update it.
 
-1. **Generate file** exports a `.uf2` with those settings. Generation itself does not change the guitar.
-2. **Install firmware** verifies the connected guitar's configuration, makes a complete
-   flash backup, verifies that backup, installs the file and checks the settings after restart.
-3. **Undo firmware** restores the full firmware and settings from before the most recent
+1. **Install update** automatically includes your current settings, verifies the connected
+   guitar's configuration, makes and verifies a complete backup, installs the update and
+   checks the saved settings after restart. There is no separate file-generation step.
+2. **Undo last update** restores the full firmware and settings from before the most recent
    installation. It checks that the backup belongs to this guitar and backs up the current
-   state before restoring. Undo does not undo a subsequent **Push to guitar** by itself.
+   state before restoring. Undo does not undo a subsequent **Save to guitar** by itself.
+3. **Manual file options** has **Export file** and **Install from file** for manual use.
 
 The transfer runs in a separate process. Keep USB connected until it finishes.
 If installation or the restart check fails, the helper attempts to restore its verified backup.
@@ -102,3 +107,9 @@ the Windows release. The app communicates with the firmware over USB.
 The bundled [picotool 2.3.1](https://github.com/raspberrypi/picotool/tree/2.3.1)
 retains Raspberry Pi's license; its [Windows build tooling](https://github.com/raspberrypi/pico-sdk-tools/tree/v2.3.1-0)
 is also available upstream.
+
+## Credits
+
+Made by Harley · discord: harleydabrit
+
+<img src="assets/harley.png" alt="Harley's profile picture" width="100">

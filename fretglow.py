@@ -13,6 +13,7 @@ import customtkinter as ctk
 
 import onboard
 import firmware
+import keybinds
 import brotli
 import usb.core
 import usb.util
@@ -23,8 +24,7 @@ CLASSIC = ['#30df72', '#ff4168', '#ffe34c', '#428aff', '#ff9438']
 MASKS = [0x1000, 0x2000, 0x8000, 0x4000, 0x0100, 0x0001, 0x0002, 0x0010, 0x0020]
 CONTROLS = NAMES + ['Strum up', 'Strum down', 'Start', 'Select']
 DEFAULT_KEYS = ['A', 'S', 'K', 'L', 'M', 'Up', 'Down', 'Enter', 'Backspace']
-KEYS = {chr(i): i for i in range(65, 91)} | {str(i): 48+i for i in range(10)}
-KEYS.update({'Space': 32, 'Enter': 13, 'Tab': 9, 'Backspace': 8, 'Up': 38, 'Down': 40, 'Left': 37, 'Right': 39, 'None': 0})
+KEYS = keybinds.VK
 
 def fields(data):
     p = 0
@@ -163,9 +163,9 @@ class Keyboard:
         self.user.SendInput.restype = wt.UINT
         self.sender = sender or self.send; self.held = set(); self.slot = None
     def send(self, vk, down):
-        scan = self.user.MapVirtualKeyW(vk, 0)
-        flags = 8 | (0 if down else 2) | (1 if vk in (37,38,39,40) else 0)
-        event = Input(type=1, u=InputUnion(ki=KeyInput(scan=scan, flags=flags)))
+        scan = keybinds.SCAN[vk]
+        flags = 8 | (0 if down else 2) | (1 if scan & 0xff00 else 0)
+        event = Input(type=1, u=InputUnion(ki=KeyInput(scan=scan & 0xff, flags=flags)))
         if self.user.SendInput(1, ct.byref(event), ct.sizeof(Input)) != 1:
             raise RuntimeError('Windows blocked keyboard input. Run the target game normally, without administrator mode.')
     def find(self):
@@ -213,8 +213,8 @@ def normalise_hex(value):
     if not re.fullmatch(r'[0-9a-fA-F]{6}', value): raise ValueError('Enter a 6-digit hex colour, such as #FF0099.')
     return '#' + value.upper()
 
-def reactive_colours(colours, buttons, white_pressed):
-    return ['#FFFFFF' if white_pressed and buttons & mask else colour for mask, colour in zip(MASKS, colours)]
+def reactive_colours(colours, buttons, white_pressed, effect_colour='#FFFFFF'):
+    return [effect_colour if white_pressed and buttons & mask else colour for mask, colour in zip(MASKS, colours)]
 
 class WhiteEffect:
     def __init__(self): self.reset()
@@ -227,7 +227,7 @@ class WhiteEffect:
 
 class App:
     def __init__(self, root, profile=None, autoconnect=True):
-        self.root = root; root.title('FretGlow'); root.geometry('1000x810'); root.minsize(940, 800)
+        self.root = root; root.title('FretGlow'); root.geometry('1000x860'); root.minsize(940, 850)
         root.configure(fg_color=BG)
         self.guitar = Guitar(); self.keyboard = Keyboard(); self.pool = ThreadPoolExecutor(max_workers=1)
         self.pending = None; self.after_job = None; self.light_future = None; self.closing = False
@@ -235,9 +235,11 @@ class App:
         self.profile = profile or Path(os.environ['LOCALAPPDATA']) / 'FretGlow' / 'profile.json'
         self.firmware_manager=firmware.FirmwareManager(self.profile.parent/'firmware')
         self.firmware_busy=False; self.firmware_dialog=None
+        self.tutorial=None;self.credits=None
         self.colours = CLASSIC.copy(); self.brightness = tk.IntVar(value=30)
         self.white_pressed = tk.BooleanVar(value=True); self.auto_apply = tk.BooleanVar(value=False)
         self.white_mode=tk.StringVar(value='While held'); self.effect=WhiteEffect()
+        self.effect_colour='#FFFFFF'; self.effect_hex=tk.StringVar(value='#FFFFFF'); self.key_capture=None
         self.dark_mode = tk.BooleanVar(value=True)
         self.theme = tk.StringVar(value='Graphite')
         self.enabled = tk.BooleanVar(value=False); self.bindings = [tk.StringVar(value=k) for k in DEFAULT_KEYS]
@@ -250,6 +252,8 @@ class App:
         self.switch(header,'Dark mode',self.dark_mode,self.change_theme).pack(side='left',padx=(24,0))
         self.theme_menu=ctk.CTkOptionMenu(header,values=list(THEMES),variable=self.theme,command=self.select_theme,width=108,height=30,fg_color=LINE,button_color=LINE,button_hover_color=HOVER,text_color=FG,dropdown_fg_color=PANEL,dropdown_text_color=FG,dropdown_hover_color=HOVER,font=('Segoe UI',12))
         self.theme_menu.pack(side='left',padx=(6,0))
+        self.btn(header,'Tutorial',self.open_tutorial,secondary=True,width=75).pack(side='left',padx=(14,6))
+        self.btn(header,'Credits',self.open_credits,secondary=True,width=68).pack(side='left')
         self.btn(header,'Connect',self.connect,secondary=True,width=95).pack(side='right')
         self.label(header,'',12,MUTED,textvariable=self.connection).pack(side='right',padx=16)
         body=ctk.CTkFrame(root,fg_color='transparent'); body.grid(row=1,column=0,sticky='nsew',padx=30)
@@ -274,8 +278,8 @@ class App:
         self.label(presets,'Presets',12,MUTED).pack(side='left',padx=(0,12))
         for name,values in [('Classic',CLASSIC),('Pastel',['#A9D6B0','#F2ADBC','#F5DDA1','#A4C7E8','#EBC29B']),('White',['#FFFFFF']*5)]:
             self.btn(presets,name,lambda v=values:self.preset(v),secondary=True,width=68).pack(side='left',padx=3)
-        self.label(left,'Click a swatch or type a hex value.',11,MUTED).grid(row=9,column=0,columnspan=3,sticky='w',padx=24,pady=(5,20))
-        self.btn(left,'Firmware…',self.open_firmware,secondary=True,width=145).grid(row=10,column=0,columnspan=3,sticky='w',padx=24,pady=(0,20))
+        self.label(left,'Click a colour to edit it. Click a key, then press your keyboard.',11,MUTED,wraplength=470).grid(row=9,column=0,columnspan=3,sticky='w',padx=24,pady=(5,20))
+        self.btn(left,'Guitar setup',self.open_firmware,secondary=True,width=145).grid(row=10,column=0,columnspan=3,sticky='w',padx=24,pady=(0,20))
         right=ctk.CTkFrame(body,fg_color='transparent');right.grid(row=0,column=1,sticky='nsew');right.grid_columnconfigure(0,weight=1)
         lighting=self.card(right);lighting.grid(row=0,column=0,sticky='ew');lighting.grid_columnconfigure(0,weight=1)
         self.label(lighting,'Lighting',17,bold=True).grid(row=0,column=0,sticky='w',padx=20,pady=(18,12))
@@ -284,15 +288,21 @@ class App:
         self.slider=ctk.CTkSlider(lighting,from_=0,to=100,number_of_steps=100,variable=self.brightness,command=self.change_brightness,progress_color=ACCENT,button_color=ACCENT,button_hover_color=ACCENT_HOVER,fg_color=LINE)
         self.slider.grid(row=2,column=0,sticky='ew',padx=20,pady=(12,20))
         effect_row=ctk.CTkFrame(lighting,fg_color='transparent');effect_row.grid(row=3,column=0,sticky='ew',padx=20,pady=(0,14))
-        self.label(effect_row,'White effect',12).pack(side='left')
+        self.label(effect_row,'Press effect',12).pack(side='left')
         self.white_menu=ctk.CTkOptionMenu(effect_row,values=['Off','While held','Toggle'],variable=self.white_mode,command=lambda v:self.change_white(),width=125,height=30,fg_color=LINE,button_color=LINE,button_hover_color=HOVER,text_color=FG,dropdown_fg_color=PANEL,dropdown_text_color=FG,dropdown_hover_color=HOVER,font=('Segoe UI',12))
         self.white_menu.pack(side='right')
-        self.switch(lighting,'Apply saved lights on connect',self.auto_apply,self.mark_dirty).grid(row=4,column=0,sticky='w',padx=20,pady=(0,18))
-        buttons=ctk.CTkFrame(lighting,fg_color='transparent');buttons.grid(row=5,column=0,sticky='ew',padx=20,pady=(0,18))
-        self.btn(buttons,'Apply lights',self.apply,width=123).pack(side='left')
-        self.btn(buttons,'Restore',self.restore,secondary=True,width=90).pack(side='right')
-        self.btn(lighting,'Push to guitar',self.push_to_guitar,width=220).grid(row=6,column=0,sticky='ew',padx=20,pady=(0,10))
-        self.label(lighting,'Saved on guitar · no app needed',11,MUTED).grid(row=7,column=0,sticky='w',padx=20,pady=(0,16))
+        effect_colour_row=ctk.CTkFrame(lighting,fg_color='transparent');effect_colour_row.grid(row=4,column=0,sticky='ew',padx=20,pady=(0,14))
+        self.label(effect_colour_row,'Colour',12).pack(side='left')
+        self.effect_entry=ctk.CTkEntry(effect_colour_row,textvariable=self.effect_hex,width=110,height=32,fg_color=BG,border_color=LINE,text_color=FG,font=('Consolas',12))
+        self.effect_entry.pack(side='right');self.effect_entry.bind('<Return>',lambda e:self.commit_effect());self.effect_entry.bind('<FocusOut>',lambda e:self.commit_effect())
+        self.effect_swatch=ctk.CTkButton(effect_colour_row,text='',width=32,height=32,corner_radius=8,fg_color=self.effect_colour,hover_color=self.effect_colour,border_color=LINE,border_width=1,command=self.pick_effect)
+        self.effect_swatch.pack(side='right',padx=(0,8));self.effect_hex.trace_add('write',lambda *args:self.mark_dirty())
+        self.switch(lighting,'Apply saved lights on connect',self.auto_apply,self.mark_dirty).grid(row=5,column=0,sticky='w',padx=20,pady=(0,18))
+        buttons=ctk.CTkFrame(lighting,fg_color='transparent');buttons.grid(row=6,column=0,sticky='ew',padx=20,pady=(0,18))
+        self.btn(buttons,'Preview',self.apply,width=123).pack(side='left')
+        self.btn(buttons,'End preview',self.restore,secondary=True,width=100).pack(side='right')
+        self.btn(lighting,'Save to guitar',self.push_to_guitar,width=220).grid(row=7,column=0,sticky='ew',padx=20,pady=(0,10))
+        self.label(lighting,'Stores colours and keys · works without the app',11,MUTED,wraplength=267).grid(row=8,column=0,sticky='w',padx=20,pady=(0,16))
         keyboard=self.card(right);keyboard.grid(row=1,column=0,sticky='ew',pady=(16,0));keyboard.grid_columnconfigure(0,weight=1)
         top=ctk.CTkFrame(keyboard,fg_color='transparent');top.grid(row=0,column=0,columnspan=2,sticky='ew',padx=20,pady=(18,10))
         self.label(top,'Keyboard',17,bold=True).pack(side='left')
@@ -303,7 +313,7 @@ class App:
         self.label(keyboard,'',11,MUTED,textvariable=self.key_status,wraplength=265).grid(row=5,column=0,columnspan=2,sticky='w',padx=20,pady=(10,16))
         footer=ctk.CTkFrame(root,fg_color='transparent');footer.grid(row=2,column=0,sticky='ew',padx=30,pady=(18,24))
         self.label(footer,'',12,MUTED,textvariable=self.status,wraplength=590).pack(side='left')
-        self.btn(footer,'Save settings',self.save_profile,width=124).pack(side='right')
+        self.btn(footer,'Save on this PC',self.save_profile,width=124).pack(side='right')
         self.label(footer,'',11,MUTED,textvariable=self.save_state).pack(side='right',padx=15)
         self.theme_targets=[];self.register_theme_widgets(root);self.apply_theme()
         root.protocol('WM_DELETE_WINDOW',self.close);root.after(8,self.tick)
@@ -316,7 +326,27 @@ class App:
     def switch(self,parent,text,var,command):
         return ctk.CTkSwitch(parent,text=text,variable=var,command=command,font=('Segoe UI',12),text_color=FG,progress_color=ACCENT,fg_color=OFF,button_color='#FFFFFF',button_hover_color='#F3F3F3',switch_width=34,switch_height=20,border_width=0)
     def key_menu(self,parent,var):
-        return ctk.CTkComboBox(parent,values=list(KEYS),variable=var,state='readonly',width=105,height=36,corner_radius=8,fg_color=BG,border_color=LINE,border_width=1,button_color=LINE,button_hover_color=HOVER,text_color=FG,dropdown_fg_color=PANEL,dropdown_text_color=FG,dropdown_hover_color=BG,font=('Segoe UI',12),command=lambda v:self.mark_dirty())
+        return ctk.CTkButton(parent,textvariable=var,text=var.get(),width=105,height=36,corner_radius=8,fg_color=BG,border_color=LINE,border_width=1,hover_color=HOVER,text_color=FG,font=('Segoe UI',12),command=lambda:self.capture_key(var))
+    def capture_key(self,var):
+        if self.firmware_busy:return
+        if self.key_capture and self.key_capture.winfo_exists():self.key_capture.lift();return
+        self.stop_keyboard();palette=THEMES[self.theme.get()]
+        window=ctk.CTkToplevel(self.root);self.key_capture=window
+        window.title('Set key');window.geometry('360x190');window.resizable(False,False);window.transient(self.root);window.configure(fg_color=palette['bg'])
+        ctk.CTkLabel(window,text='Press a key on your keyboard',text_color=palette['text'],font=('Segoe UI',17)).pack(pady=(24,8))
+        hint=ctk.CTkLabel(window,text='One key per binding. F8 is reserved.',text_color=palette['muted'],font=('Segoe UI',12),wraplength=325);hint.pack()
+        def finish(key=None):
+            if key is not None:var.set(key);self.mark_dirty();self.status.set(f'Key set to {key}')
+            window.grab_release();window.destroy();self.key_capture=None
+        def pressed(event):
+            try:key=keybinds.capture(event.keysym,event.keycode,lambda vk:self.keyboard.user.MapVirtualKeyW(vk,4))
+            except ValueError as error:hint.configure(text=str(error));return 'break'
+            finish(key);return 'break'
+        window.bind('<KeyPress>',pressed)
+        row=ctk.CTkFrame(window,fg_color='transparent');row.pack(pady=20)
+        for text,action in [('Clear binding',lambda:finish('None')),('Cancel',finish)]:
+            ctk.CTkButton(row,text=text,command=action,width=130,height=32,fg_color=palette['accent'],hover_color=palette['accent_hover']).pack(side='left',padx=6)
+        window.protocol('WM_DELETE_WINDOW',finish);window.grab_set();window.after(80,window.focus_force)
     def register_theme_widgets(self,widget):
         if isinstance(widget,(ctk.CTk,ctk.CTkBaseClass)):
             properties={}
@@ -345,7 +375,18 @@ class App:
             self.mark_dirty()
             if self.active:self.applied_colours=self.colours.copy()
         return True
-    def commit_all(self):return all([self.commit_hex(i) for i in range(5)])
+    def commit_effect(self):
+        try:colour=normalise_hex(self.effect_hex.get())
+        except ValueError:
+            self.effect_entry.configure(border_color='#C24D42');self.status.set('Effect: enter a valid hex colour.');return False
+        if colour!=self.effect_colour:self.effect_colour=colour;self.mark_dirty()
+        if self.effect_hex.get()!=colour:self.effect_hex.set(colour)
+        self.effect_entry.configure(border_color=THEMES[self.theme.get()]['line']);self.effect_swatch.configure(fg_color=colour,hover_color=colour)
+        return True
+    def pick_effect(self):
+        colour=colorchooser.askcolor(self.effect_colour,parent=self.root,title='Press effect colour')[1]
+        if colour:self.effect_hex.set(colour);self.commit_effect()
+    def commit_all(self):return all([self.commit_hex(i) for i in range(5)]+[self.commit_effect()])
     def pick(self,i):
         colour=colorchooser.askcolor(self.colours[i],parent=self.root,title=f'{NAMES[i]} fret')[1]
         if colour:self.hexes[i].set(colour);self.commit_hex(i)
@@ -385,7 +426,7 @@ class App:
         if self.firmware_busy:return
         if self.pending: self.status.set('Please wait for the current operation.'); return
         if not self.commit_all(): return
-        try: data=onboard.encode(self.colours,self.brightness.get(),self.white_mode.get(),[v.get() for v in self.bindings])
+        try: data=onboard.encode(self.colours,self.brightness.get(),self.white_mode.get(),[v.get() for v in self.bindings],self.effect_colour)
         except (ValueError,KeyError) as e: self.status.set(str(e)); return
         self.active=False; self.last_frame=None; self.stop_keyboard()
         self.save_profile()
@@ -395,6 +436,14 @@ class App:
             self.firmware_dialog.window.lift();return
         from firmware_ui import FirmwareDialog
         self.firmware_dialog=FirmwareDialog(self,THEMES[self.theme.get()])
+    def open_tutorial(self):
+        if self.tutorial and self.tutorial.window.winfo_exists():self.tutorial.window.lift();return
+        from help_ui import Tutorial
+        self.tutorial=Tutorial(self,THEMES[self.theme.get()])
+    def open_credits(self):
+        if self.credits and self.credits.window.winfo_exists():self.credits.window.lift();return
+        from help_ui import Credits
+        self.credits=Credits(self,THEMES[self.theme.get()])
     def watch_firmware(self,job):
         state=self.firmware_manager.state(job);message=state['message'];self.status.set(message)
         dialog=self.firmware_dialog
@@ -412,6 +461,7 @@ class App:
             if len(colours)!=5 or len(keys)!=9 or not all(k in KEYS for k in keys) or type(b)is not int or not 0<=b<=100:raise ValueError()
             if type(d.get('white_pressed',True))is not bool or type(d.get('auto_apply',False))is not bool:raise ValueError()
             if type(d.get('dark_mode',True))is not bool:raise ValueError()
+            self.effect_colour=normalise_hex(d.get('effect_colour','#FFFFFF'));self.effect_hex.set(self.effect_colour)
             theme=d.get('theme','Graphite')
             if theme not in THEMES:theme='Graphite'
             self.theme.set(theme)
@@ -426,16 +476,16 @@ class App:
         if not self.commit_all():return False
         try:
             self.profile.parent.mkdir(parents=True,exist_ok=True)
-            d=dict(version=4,colours=self.colours,brightness=self.brightness.get(),keys=[v.get() for v in self.bindings],white_pressed=self.white_pressed.get(),white_mode=self.white_mode.get(),auto_apply=self.auto_apply.get(),dark_mode=self.dark_mode.get(),theme=self.theme.get())
+            d=dict(version=5,colours=self.colours,brightness=self.brightness.get(),keys=[v.get() for v in self.bindings],white_pressed=self.white_pressed.get(),white_mode=self.white_mode.get(),effect_colour=self.effect_colour,auto_apply=self.auto_apply.get(),dark_mode=self.dark_mode.get(),theme=self.theme.get())
             temp=self.profile.with_suffix('.tmp');temp.write_text(json.dumps(d,indent=2));temp.replace(self.profile)
-            self.dirty=False;self.save_state.set('Saved');self.status.set('Settings saved');return True
+            self.dirty=False;self.save_state.set('Saved on PC');self.status.set('Settings saved on this PC');return True
         except OSError as e:self.status.set(f'Could not save: {e}');return False
     def stop_keyboard(self,text='F8 to stop'):
         self.enabled.set(False)
         try:self.keyboard.release()
         except Exception as e:text=str(e)
         self.key_status.set(text)
-        for c in self.combos:c.configure(state='readonly')
+        for c in self.combos:c.configure(state='normal')
     def toggle_keyboard(self):
         if self.firmware_busy:self.stop_keyboard('Firmware transfer in progress');return
         if not self.enabled.get():self.stop_keyboard();return
@@ -463,7 +513,7 @@ class App:
                     else:self.keyboard.transition(buttons,[v.get() for v in self.bindings])
                 white_buttons=self.effect.update(buttons,self.white_mode.get()) if self.active else 0
                 if self.active and not self.pending and not self.light_future:
-                    colours=reactive_colours(self.applied_colours,white_buttons,True)
+                    colours=reactive_colours(self.applied_colours,white_buttons,True,self.effect_colour)
                     frame=(tuple(colours),self.applied_brightness)
                     if frame!=self.last_frame:
                         self.light_future=self.pool.submit(self.guitar.apply,colours,self.applied_brightness);self.last_frame=frame

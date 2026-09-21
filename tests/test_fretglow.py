@@ -29,6 +29,8 @@ class Tests(unittest.TestCase):
         for value in ['ff0099',' #ff0099 ','#f09']:
             self.assertEqual(f.normalise_hex(value),'#FF0099')
         with self.assertRaises(ValueError):f.normalise_hex('nope')
+    def test_custom_press_effect_preserves_other_frets(self):
+        self.assertEqual(f.reactive_colours(f.CLASSIC,0x1000,True,'#123456'),['#123456']+f.CLASSIC[1:])
     def test_light_updates_only_changed_frets(self):
         g=f.Guitar();g.mapping=[4,3,2,1,0];writes=[];g.write=writes.append
         g.apply(f.CLASSIC,30);self.assertEqual(len(writes),5)
@@ -62,10 +64,14 @@ class Tests(unittest.TestCase):
                     app.dark_mode.set(True);app.change_theme();self.assertEqual(ctk.get_appearance_mode(),'Dark')
                 app.theme.set('Violet');app.select_theme('Violet')
                 app.hexes[0].set('A1B2C3');app.white_pressed.set(False);app.white_mode.set('Toggle')
+                app.effect_hex.set('12abef');app.bindings[0].set('Right Ctrl')
                 self.assertTrue(app.save_profile())
                 app.theme.set('Graphite');app.load_profile()
                 self.assertEqual(app.theme.get(),'Violet');self.assertEqual(app.colours[0],'#A1B2C3');self.assertFalse(app.white_pressed.get())
                 self.assertEqual(app.white_mode.get(),'Toggle')
+                self.assertEqual(app.effect_colour,'#12ABEF');self.assertEqual(app.bindings[0].get(),'Right Ctrl')
+                self.assertIsNotNone(app.combos[0]._text_label)
+                self.assertEqual(app.combos[0]._text_label.cget('text'),'Right Ctrl')
             finally:
                 app.pool.shutdown()
                 for timer in root.tk.call('after','info'):root.after_cancel(timer)

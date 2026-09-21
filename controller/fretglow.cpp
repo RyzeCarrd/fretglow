@@ -20,9 +20,12 @@ static uint32_t crc(const uint8_t *p) {
 }
 static bool valid(const uint8_t *p) {
     uint32_t expected; memcpy(&expected,p+60,4);
-    if(memcmp(p,"FGL1",4)||p[4]!=1||p[5]>31||p[6]>2||p[7]||p[32]!=0x88||p[33]!=0x13||crc(p)!=expected) return false;
-    for(int i=23;i<32;i++) if(p[i]!=0 && (p[i]<4||p[i]>82)) return false;
-    for(int i=34;i<60;i++) if(p[i]) return false;
+    if(memcmp(p,"FGL1",4)||(p[4]!=1&&p[4]!=2)||p[5]>31||p[6]>2||p[7]||p[32]!=0x88||p[33]!=0x13||crc(p)!=expected) return false;
+    for(int i=23;i<32;i++) {
+        bool key=p[i]==0||(p[i]>=4&&p[i]<=(p[4]==1?82:115))||(p[4]==2&&p[i]>=224&&p[i]<=231);
+        if(!key) return false;
+    }
+    for(int i=p[4]==1?34:37;i<60;i++) if(p[i]) return false;
     return true;
 }
 static void clearLights() { for(int i=0;i<5;i++) { ledState[i].select=0; latched[i]=false; } }
@@ -70,16 +73,22 @@ void fretglow_tick() {
 void fretglow_render() {
     if(!custom||preview) return;
     for(int i=0;i<5;i++) {
-        bool white=saved[6]==1 ? buttons[i] : saved[6]==2 && latched[i];
+        bool active=saved[6]==1 ? buttons[i] : saved[6]==2 && latched[i];
         Led_t &led=ledState[4-i]; led.select=1; led.brightness=saved[5];
-        led.r=white?255:saved[8+i*3]; led.g=white?255:saved[9+i*3]; led.b=white?255:saved[10+i*3];
+        led.r=active?(saved[4]==1?255:saved[34]):saved[8+i*3];
+        led.g=active?(saved[4]==1?255:saved[35]):saved[9+i*3];
+        led.b=active?(saved[4]==1?255:saved[36]):saved[10+i*3];
     }
 }
-void fretglow_keyboard(uint8_t *raw) {
+void fretglow_keyboard(uint8_t *raw,uint8_t *modifiers) {
     for(int i=0;i<9;i++) {
         // Short Start/Back presses type on release; long holds never repeat keys.
         bool down=i<7 ? buttons[i] : holds[i-7].pulse && uint32_t(millis()-holds[i-7].pulse)<40;
-        uint8_t key=saved[23+i]; if(down&&key) raw[key/8]|=1u<<(key%8);
+        uint8_t key=saved[23+i];
+        if(down&&key) {
+            if(key>=224&&key<=231) *modifiers|=1u<<(key-224);
+            else raw[key/8]|=1u<<(key%8);
+        }
     }
 }
 bool fretglow_valid(uint8_t type,uint8_t req,uint16_t value,uint16_t index,uint16_t len) {
@@ -89,7 +98,7 @@ bool fretglow_valid(uint8_t type,uint8_t req,uint16_t value,uint16_t index,uint1
 }
 uint16_t fretglow_request(uint8_t req,uint8_t *buf) {
     if(req==0x70) {
-        memset(buf,0,16); memcpy(buf,"FGLW",4); buf[4]=1;
+        memset(buf,0,16); memcpy(buf,"FGLW",4); buf[4]=2;
         buf[5]=(custom?1:0)|(consoleType==KEYBOARD_MOUSE?2:0)|(preview?4:0)|(configured?8:0);
         buf[6]=saveStatus; memcpy(buf+8,saved+60,4); return 16;
     }

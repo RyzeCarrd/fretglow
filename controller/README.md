@@ -23,6 +23,12 @@ USB interface 2: 0x70 reads a 16-byte FGLW/version/status response; 0x71 reads t
 saved profile; 0x72 queues a validated profile save; 0x74 enables/disables app preview.
 See `../onboard.py` for the exact profile encoding and readback verification.
 
+Protocol/profile v2 adds the press-effect RGB colour at bytes 34–36 and modifier
+keys (HID 224–231). Bytes 37–59 stay reserved. Existing v1 profiles remain valid
+and render their press effect as white. Keyboard modifiers use the report's
+modifier byte; ordinary keys use the NKRO bitmap. The app records single physical
+keys, not shortcut combinations, and keeps numpad/navigation keys distinct.
+
 The generated firmware combines the compiled application with an EEPROM profile.
 The app embeds settings without recompiling C++ for each colour change. During an
 app installation, unrelated EEPROM bytes are copied from the verified backup.
