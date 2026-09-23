@@ -2,11 +2,13 @@
 
 A Windows app for five-fret Santroller Pico guitars with APA102 RGB lights.
 
-- Individual fret colours with a picker or hex input.
+- Individual fret colours with a themed colour picker or hex input.
+- Named presets containing colours, brightness, press effects and keys.
+- Three guitar slots: drag saved presets into place and choose a startup slot.
 - Press effect in any colour: Off, While held, or Toggle (press once for the effect colour, again to restore the fret colour).
 - Brightness control and saved settings.
 - Graphite, Slate, Violet and Sand interface themes, each in light or dark mode.
-- Click a binding and press your PC keyboard to record it, including navigation, modifier and numpad keys.
+- Click a binding and press a PC keyboard key to record it, including navigation, modifier and numpad keys.
 - Save colours, press effects and keys directly on supported FretGlow firmware.
 - Generate a customised firmware file, install it, and undo an installation.
 
@@ -24,17 +26,17 @@ live. **Save on this PC** remembers your colours, mappings and theme in Windows.
 Keyboard mode sends keys to the focused application. Default fret keys are
 **A, S, K, L, M**. **F8** stops keyboard mode. Disable it before editing mappings.
 
-**Save to guitar** stores colours, the press-effect colour and your key mappings on
-FretGlow firmware, with readback verification. This is the button for everyday changes.
+**Save to guitar** stores the current colours, press effect and keys in the active
+guitar slot. Use **My presets → Save slots to guitar** to save all three assigned slots.
 Closing the app or clicking **End preview** ends the preview and resumes the guitar's lighting.
-Custom effect colours and extended keys need the latest guitar update. Existing saved
+Three slots need the latest guitar update. Existing saved
 profiles keep their keys and default to a white effect colour until you change it.
 
 ## Firmware
 
 Firmware is the software inside your guitar. Open **Guitar setup** to update it.
 
-1. **Install update** automatically includes your current settings, verifies the connected
+1. **Install update** includes assigned preset slots, or current settings if none are assigned, and verifies the connected
    guitar's configuration, makes and verifies a complete backup, installs the update and
    checks the saved settings after restart. There is no separate file-generation step.
 2. **Undo last update** restores the full firmware and settings from before the most recent
@@ -47,16 +49,24 @@ If installation or the restart check fails, the helper attempts to restore its v
 Backups and transfer logs stay in `%LOCALAPPDATA%\FretGlow\firmware`; **Open backups** opens it.
 Do not delete that folder if you need Undo. Use the same Windows user account to access its backups.
 
-With the updated firmware, saved colours load when powered on. Hold **Start** for
-five seconds to toggle between saved colours and the original lighting. Hold
-**Select / Back** for five seconds to switch between controller and USB keyboard mode.
-Release before repeating either shortcut. The frets use your saved key mappings;
-short Start/Select presses in keyboard mode type on release, so holding a shortcut
+Open **My presets**, enter a name and click **Save current as preset**. Drag saved
+presets into up to three guitar slots, or select a preset and click **Assign**.
+Choose a **Startup** slot and click **Save slots to guitar**. Empty slots are skipped.
+To edit a named preset, use **Load selected**, change the main-window settings,
+then **Replace selected**. Save the slots again to update the guitar.
+
+Hold **both bottom buttons together** for five seconds to cycle presets 1 → 2 → 3 → 1,
+skipping empty slots. Hold only the **bottom Start button** for five seconds to toggle
+the selected preset and original lighting. Hold the **button above Start** for five seconds to switch
+between controller and USB keyboard mode. Reconnecting loads the startup slot;
+switching keyboard mode keeps the current slot.
+Release before repeating either shortcut. The frets use the active slot's key mappings;
+short presses of the two round buttons in keyboard mode type on release, so holding a shortcut
 does not repeatedly send Enter or Backspace. No app is needed on the other computer.
 
 Return to controller mode before connecting the app or installing another update.
 The app's keyboard switch is its existing Windows keyboard bridge; **F8** stops that
-bridge. The guitar's native keyboard mode is switched with **Select / Back** instead.
+bridge. The guitar's native keyboard mode is switched with the **button above Start**.
 
 For manual recovery, unplug USB, hold **BOOTSEL on the Pico board** while reconnecting,
 then release when **RPI-RP2** appears. Copy a verified `before.uf2` backup onto that drive.
@@ -92,9 +102,6 @@ For a source build, prepare the ignored `firmware_assets` directory as described
 `dist/FretGlow-Windows.zip`. Tests use synthetic configurations and simulated
 transfers; they do not flash hardware.
 
-Release validation includes an actual verified installation, settings readback,
-restoration of the original firmware using Undo, and reinstallation on the supported guitar.
-
 Protocol references: [Santroller firmware](https://github.com/Santroller/Santroller)
 and [Santroller Configurator](https://github.com/Santroller/SantrollerConfigurator).
 FretGlow is an independent app and is not affiliated with those projects.
@@ -112,4 +119,4 @@ is also available upstream.
 
 Made by Harley · discord: harleydabrit
 
-<img src="assets/harley.png" alt="Harley's profile picture" width="100">
+<img src="assets/harley.png" alt="Profile picture" width="100">

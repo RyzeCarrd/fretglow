@@ -8,6 +8,7 @@ import sys
 root = Path(__file__).resolve().parent
 subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--windowed',
     '--onedir', '--name', 'FretGlow', '--collect-all', 'libusb_package',
+    '--icon', 'assets/fretglow.ico',
     '--add-data', 'firmware_assets;firmware_assets',
     '--add-data', 'assets;assets',
     '--collect-data', 'customtkinter', 'fretglow.py'], cwd=root, check=True)

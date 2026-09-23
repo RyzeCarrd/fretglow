@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 void fretglow_setup(void);
+void fretglow_reboot(void);
 void fretglow_tick(void);
 void fretglow_render(void);
 void fretglow_keyboard(uint8_t *raw,uint8_t *modifiers);

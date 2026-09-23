@@ -7,13 +7,15 @@ from pathlib import Path
 import re
 import sys
 import tkinter as tk
-from tkinter import ttk, colorchooser, messagebox
+from tkinter import ttk, messagebox
 from concurrent.futures import ThreadPoolExecutor
 import customtkinter as ctk
 
 import onboard
 import firmware
 import keybinds
+import presets as preset_store
+from app_icon import set_icon
 import brotli
 import usb.core
 import usb.util
@@ -22,7 +24,7 @@ import libusb_package
 NAMES = ['Green', 'Red', 'Yellow', 'Blue', 'Orange']
 CLASSIC = ['#30df72', '#ff4168', '#ffe34c', '#428aff', '#ff9438']
 MASKS = [0x1000, 0x2000, 0x8000, 0x4000, 0x0100, 0x0001, 0x0002, 0x0010, 0x0020]
-CONTROLS = NAMES + ['Strum up', 'Strum down', 'Start', 'Select']
+CONTROLS = NAMES + ['Strum up', 'Strum down', 'Bottom Start', 'Above Start']
 DEFAULT_KEYS = ['A', 'S', 'K', 'L', 'M', 'Up', 'Down', 'Enter', 'Backspace']
 KEYS = keybinds.VK
 
@@ -228,6 +230,7 @@ class WhiteEffect:
 class App:
     def __init__(self, root, profile=None, autoconnect=True):
         self.root = root; root.title('FretGlow'); root.geometry('1000x860'); root.minsize(940, 850)
+        set_icon(root)
         root.configure(fg_color=BG)
         self.guitar = Guitar(); self.keyboard = Keyboard(); self.pool = ThreadPoolExecutor(max_workers=1)
         self.pending = None; self.after_job = None; self.light_future = None; self.closing = False
@@ -235,7 +238,7 @@ class App:
         self.profile = profile or Path(os.environ['LOCALAPPDATA']) / 'FretGlow' / 'profile.json'
         self.firmware_manager=firmware.FirmwareManager(self.profile.parent/'firmware')
         self.firmware_busy=False; self.firmware_dialog=None
-        self.tutorial=None;self.credits=None
+        self.tutorial=None;self.credits=None;self.preset_dialog=None
         self.colours = CLASSIC.copy(); self.brightness = tk.IntVar(value=30)
         self.white_pressed = tk.BooleanVar(value=True); self.auto_apply = tk.BooleanVar(value=False)
         self.white_mode=tk.StringVar(value='While held'); self.effect=WhiteEffect()
@@ -245,6 +248,9 @@ class App:
         self.enabled = tk.BooleanVar(value=False); self.bindings = [tk.StringVar(value=k) for k in DEFAULT_KEYS]
         self.status = tk.StringVar(value='Ready'); self.connection = tk.StringVar(value='Not connected')
         self.save_state = tk.StringVar(value='Saved'); self.key_status = tk.StringVar(value='F8 to stop')
+        try:self.library=preset_store.Library(self.profile.parent/'presets.json')
+        except (OSError,ValueError,KeyError,TypeError):
+            self.library=None;self.status.set('The saved preset library could not be opened. Your existing file has been kept.')
         self.load_profile(); ctk.set_appearance_mode('dark' if self.dark_mode.get() else 'light'); self.hexes = [tk.StringVar(value=c.upper()) for c in self.colours]
         root.grid_columnconfigure(0, weight=1); root.grid_rowconfigure(1, weight=1)
         header = ctk.CTkFrame(root, fg_color='transparent'); header.grid(row=0, column=0, sticky='ew', padx=30, pady=(26,20))
@@ -278,6 +284,7 @@ class App:
         self.label(presets,'Presets',12,MUTED).pack(side='left',padx=(0,12))
         for name,values in [('Classic',CLASSIC),('Pastel',['#A9D6B0','#F2ADBC','#F5DDA1','#A4C7E8','#EBC29B']),('White',['#FFFFFF']*5)]:
             self.btn(presets,name,lambda v=values:self.preset(v),secondary=True,width=68).pack(side='left',padx=3)
+        self.btn(presets,'My presets',self.open_presets,secondary=True,width=96).pack(side='left',padx=(10,0))
         self.label(left,'Click a colour to edit it. Click a key, then press your keyboard.',11,MUTED,wraplength=470).grid(row=9,column=0,columnspan=3,sticky='w',padx=24,pady=(5,20))
         self.btn(left,'Guitar setup',self.open_firmware,secondary=True,width=145).grid(row=10,column=0,columnspan=3,sticky='w',padx=24,pady=(0,20))
         right=ctk.CTkFrame(body,fg_color='transparent');right.grid(row=0,column=1,sticky='nsew');right.grid_columnconfigure(0,weight=1)
@@ -302,7 +309,7 @@ class App:
         self.btn(buttons,'Preview',self.apply,width=123).pack(side='left')
         self.btn(buttons,'End preview',self.restore,secondary=True,width=100).pack(side='right')
         self.btn(lighting,'Save to guitar',self.push_to_guitar,width=220).grid(row=7,column=0,sticky='ew',padx=20,pady=(0,10))
-        self.label(lighting,'Stores colours and keys · works without the app',11,MUTED,wraplength=267).grid(row=8,column=0,sticky='w',padx=20,pady=(0,16))
+        self.label(lighting,'Saves these settings to the active guitar slot',11,MUTED,wraplength=267).grid(row=8,column=0,sticky='w',padx=20,pady=(0,16))
         keyboard=self.card(right);keyboard.grid(row=1,column=0,sticky='ew',pady=(16,0));keyboard.grid_columnconfigure(0,weight=1)
         top=ctk.CTkFrame(keyboard,fg_color='transparent');top.grid(row=0,column=0,columnspan=2,sticky='ew',padx=20,pady=(18,10))
         self.label(top,'Keyboard',17,bold=True).pack(side='left')
@@ -333,6 +340,7 @@ class App:
         self.stop_keyboard();palette=THEMES[self.theme.get()]
         window=ctk.CTkToplevel(self.root);self.key_capture=window
         window.title('Set key');window.geometry('360x190');window.resizable(False,False);window.transient(self.root);window.configure(fg_color=palette['bg'])
+        set_icon(window)
         ctk.CTkLabel(window,text='Press a key on your keyboard',text_color=palette['text'],font=('Segoe UI',17)).pack(pady=(24,8))
         hint=ctk.CTkLabel(window,text='One key per binding. F8 is reserved.',text_color=palette['muted'],font=('Segoe UI',12),wraplength=325);hint.pack()
         def finish(key=None):
@@ -384,12 +392,14 @@ class App:
         self.effect_entry.configure(border_color=THEMES[self.theme.get()]['line']);self.effect_swatch.configure(fg_color=colour,hover_color=colour)
         return True
     def pick_effect(self):
-        colour=colorchooser.askcolor(self.effect_colour,parent=self.root,title='Press effect colour')[1]
-        if colour:self.effect_hex.set(colour);self.commit_effect()
+        from colour_ui import ColourPicker
+        def selected(colour):self.effect_hex.set(colour);self.commit_effect()
+        ColourPicker(self,self.effect_colour,'Press colour',selected,THEMES[self.theme.get()])
     def commit_all(self):return all([self.commit_hex(i) for i in range(5)]+[self.commit_effect()])
     def pick(self,i):
-        colour=colorchooser.askcolor(self.colours[i],parent=self.root,title=f'{NAMES[i]} fret')[1]
-        if colour:self.hexes[i].set(colour);self.commit_hex(i)
+        from colour_ui import ColourPicker
+        def selected(colour):self.hexes[i].set(colour);self.commit_hex(i)
+        ColourPicker(self,self.colours[i],f'{NAMES[i]} fret',selected,THEMES[self.theme.get()])
     def preset(self,colours):
         for i,c in enumerate(colours):self.hexes[i].set(c);self.commit_hex(i)
     def change_brightness(self,value):
@@ -423,14 +433,30 @@ class App:
     def restore(self):
         self.active=False;self.last_frame=None;self.run(self.guitar.restore)
     def push_to_guitar(self):
-        if self.firmware_busy:return
-        if self.pending: self.status.set('Please wait for the current operation.'); return
-        if not self.commit_all(): return
-        try: data=onboard.encode(self.colours,self.brightness.get(),self.white_mode.get(),[v.get() for v in self.bindings],self.effect_colour)
-        except (ValueError,KeyError) as e: self.status.set(str(e)); return
+        try:self.send_settings(preset_store.packet(self.current_settings()))
+        except (ValueError,KeyError,RuntimeError) as e:self.status.set(str(e))
+    def send_settings(self,data):
+        if self.firmware_busy or self.pending:raise RuntimeError('Please wait for the current operation.')
+        if not self.guitar.dev:raise RuntimeError('Connect the guitar first.')
         self.active=False; self.last_frame=None; self.stop_keyboard()
         self.save_profile()
         self.run(lambda:self.guitar.push(data))
+    def current_settings(self):
+        if not self.commit_all():raise ValueError('Fix the highlighted hex colour first.')
+        return dict(colours=self.colours.copy(),brightness=self.brightness.get(),mode=self.white_mode.get(),keys=[v.get() for v in self.bindings],effect_colour=self.effect_colour)
+    def firmware_settings(self):
+        if self.library and any(self.library.slots):return self.library.bank()
+        return preset_store.packet(self.current_settings())
+    def load_preset(self,settings):
+        self.stop_keyboard();self.preset(settings['colours']);self.brightness.set(settings['brightness']);self.change_brightness(settings['brightness'])
+        self.white_mode.set(settings['mode']);self.white_pressed.set(settings['mode']!='Off');self.effect_hex.set(settings['effect_colour']);self.commit_effect();self.effect.reset()
+        for var,key in zip(self.bindings,settings['keys']):var.set(key)
+        self.mark_dirty();self.status.set('Preset loaded')
+    def open_presets(self):
+        if self.library is None:self.status.set('The preset library needs attention. Its file has been kept unchanged.');return
+        if self.preset_dialog and self.preset_dialog.window.winfo_exists():self.preset_dialog.window.lift();return
+        from preset_ui import PresetDialog
+        self.preset_dialog=PresetDialog(self,THEMES[self.theme.get()])
     def open_firmware(self):
         if self.firmware_dialog and self.firmware_dialog.window.winfo_exists():
             self.firmware_dialog.window.lift();return
@@ -501,6 +527,7 @@ class App:
                 self.status.set(job.result())
                 if after:after()
             except Exception as e:self.connection.set('Connection needs attention');self.status.set(str(e))
+            if self.preset_dialog and self.preset_dialog.window.winfo_exists():self.preset_dialog.status.configure(text=self.status.get())
         if self.light_future and self.light_future.done():
             job=self.light_future;self.light_future=None
             try:job.result()

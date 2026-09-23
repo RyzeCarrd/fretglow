@@ -3,9 +3,16 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 #include <string.h>
+#include <hardware/watchdog.h>
 #include "shared_main.h"
 #include "fretglow.h"
 static uint8_t saved[64], pending[64], saveStatus;
+static uint8_t bank[256], staging[256], stagedMask, slot;
+static bool bankReady, queuedBank;
+static uint32_t stagedAt;
+static uint32_t __uninitialized_ram(resumeMagic);
+static uint32_t __uninitialized_ram(resumeState);
+static uint32_t __uninitialized_ram(resumeCrc);
 static bool configured, custom, preview, queued;
 static uint32_t queuedAt;
 static const uint8_t pins[9] = {11,12,10,14,15,9,8,16,17};
@@ -13,9 +20,11 @@ static bool buttons[9], previous[9], rawPrevious[9], latched[5];
 static uint32_t rawChanged[9];
 struct Hold { bool armed, down, fired; uint32_t since, pulse; };
 static Hold holds[2];
-static uint32_t crc(const uint8_t *p) {
+static bool chordDown, chordFired;
+static uint32_t chordSince;
+static uint32_t crc(const uint8_t *p, int size=64) {
     uint32_t c=0xffffffff;
-    for (int i=0;i<60;i++) { c^=p[i]; for(int j=0;j<8;j++) c=(c>>1)^((c&1)?0xedb88320:0); }
+    for (int i=0;i<size;i++) { if(i>=60&&i<64) continue; c^=p[i]; for(int j=0;j<8;j++) c=(c>>1)^((c&1)?0xedb88320:0); }
     return ~c;
 }
 static bool valid(const uint8_t *p) {
@@ -29,7 +38,27 @@ static bool valid(const uint8_t *p) {
     return true;
 }
 static void clearLights() { for(int i=0;i<5;i++) { ledState[i].select=0; latched[i]=false; } }
+static bool validBank(const uint8_t *p) {
+    uint32_t expected;memcpy(&expected,p+60,4);
+    if(memcmp(p,"FGB3",4)||p[4]!=1||p[5]<1||p[5]>7||p[6]>2||!(p[5]&(1<<p[6]))||crc(p,256)!=expected) return false;
+    for(int i=7;i<60;i++) if(p[i]) return false;
+    for(int i=0;i<3;i++) if(!valid(p+64+i*64)) return false;
+    return true;
+}
+static void selectSlot(uint8_t next) { slot=next;memcpy(saved,bank+64+slot*64,64);custom=true;preview=false;clearLights(); }
+void fretglow_reboot() {
+    if(bankReady) {resumeState=slot|(custom?256:0);memcpy(&resumeCrc,bank+60,4);resumeMagic=0x46475333;}
+}
 void fretglow_setup() {
+    for(int i=0;i<256;i++) bank[i]=EEPROM.read(128+i);
+    bankReady=validBank(bank);
+    bool resume=watchdog_caused_reboot()&&resumeMagic==0x46475333;
+    resumeMagic=0;
+    if(bankReady) {
+        configured=true;selectSlot(bank[6]);uint32_t c;memcpy(&c,bank+60,4);
+        if(resume&&resumeCrc==c&&(resumeState&255)<3&&(bank[5]&(1<<(resumeState&255)))) {selectSlot(resumeState&255);custom=resumeState&256;}
+        return;
+    }
     for(int i=0;i<64;i++) saved[i]=EEPROM.read(64+i);
     configured=valid(saved); custom=configured;
     if(!configured) {
@@ -43,10 +72,23 @@ void fretglow_setup() {
 void fretglow_tick() {
     uint32_t now=millis();
     if(queued && uint32_t(now-queuedAt)>=100) {
+        if(queuedBank) memcpy(pending,staging+64+staging[6]*64,64);
+        else if(bankReady) {
+            memcpy(staging,bank,256);memcpy(staging+64+slot*64,pending,64);
+            uint32_t c=crc(staging,256);memcpy(staging+60,&c,4);
+        }
         for(int i=0;i<64;i++) EEPROM.write(64+i,pending[i]);
-        if(EEPROM.commit()) { memcpy(saved,pending,64); configured=true; custom=true; preview=false; clearLights(); saveStatus=0; }
-        else saveStatus=3;
+        if(queuedBank||bankReady) for(int i=0;i<256;i++) EEPROM.write(128+i,staging[i]);
+        if(EEPROM.commit()) {
+            if(queuedBank||bankReady) {memcpy(bank,staging,256);bankReady=true;if(queuedBank)slot=bank[6];}
+            memcpy(saved,pending,64);configured=true;custom=true;preview=false;clearLights();saveStatus=0;
+        } else {
+            for(int i=0;i<64;i++) EEPROM.write(64+i,saved[i]);
+            for(int i=0;i<256;i++) EEPROM.write(128+i,bank[i]);
+            saveStatus=3;
+        }
         queued=false;
+        queuedBank=false;stagedMask=0;
     }
     for(int i=0;i<9;i++) {
         bool raw=!gpio_get(pins[i]);
@@ -54,6 +96,22 @@ void fretglow_tick() {
         if(uint32_t(now-rawChanged[i])>=3) buttons[i]=raw;
         if(i<5 && buttons[i]&&!previous[i]) latched[i]=!latched[i];
         previous[i]=buttons[i];
+    }
+    // A two-button hold owns both buttons until both are released. This also
+    // suppresses short key pulses and single-button actions on staggered release.
+    if(chordDown||(buttons[7]&&buttons[8]&&holds[0].armed&&holds[1].armed)) {
+        if(!chordDown) {chordDown=true;chordFired=false;chordSince=now;}
+        for(int i=0;i<2;i++) {holds[i].down=buttons[7+i];holds[i].fired=true;holds[i].pulse=0;}
+        if(!buttons[7]&&!buttons[8]) {
+            chordDown=false;
+            for(int i=0;i<2;i++) {holds[i].down=false;holds[i].fired=false;holds[i].armed=true;}
+        } else if(buttons[7]&&buttons[8]&&!chordFired&&uint32_t(now-chordSince)>=5000) {
+            chordFired=true;
+            if(bankReady) {
+                for(int step=1;step<=3;step++) {uint8_t next=(slot+step)%3;if(bank[5]&(1<<next)){selectSlot(next);break;}}
+            }
+        } else if(!buttons[7]||!buttons[8]) chordFired=true; // Cancel an incomplete hold.
+        return;
     }
     for(int i=0;i<2;i++) {
         Hold &h=holds[i]; bool down=buttons[7+i];
@@ -65,7 +123,7 @@ void fretglow_tick() {
         if(!h.down) { h.down=true; h.since=now; h.pulse=0; }
         if(!h.fired && uint32_t(now-h.since)>=5000) {
             h.fired=true;
-            if(i==0) { custom=configured&&!custom; preview=false; clearLights(); }
+            if(i==0) {custom=configured&&!custom;preview=false;clearLights();}
             else { set_console_type(consoleType==KEYBOARD_MOUSE ? UNIVERSAL : KEYBOARD_MOUSE); return; }
         }
     }
@@ -94,20 +152,33 @@ void fretglow_keyboard(uint8_t *raw,uint8_t *modifiers) {
 bool fretglow_valid(uint8_t type,uint8_t req,uint16_t value,uint16_t index,uint16_t len) {
     if(value||index!=2) return false;
     return (type==0xa1 && ((req==0x70&&len==16)||(req==0x71&&len==64))) ||
-           (type==0x21 && ((req==0x72&&len==64)||(req==0x74&&len==1)));
+           (type==0xa1 && req>=0x7a && req<=0x7d && len==64) ||
+           (type==0x21 && ((req==0x72&&len==64)||(req==0x74&&len==1)||(req>=0x75&&req<=0x78&&len==64)||(req==0x79&&len==1)));
 }
 uint16_t fretglow_request(uint8_t req,uint8_t *buf) {
     if(req==0x70) {
-        memset(buf,0,16); memcpy(buf,"FGLW",4); buf[4]=2;
-        buf[5]=(custom?1:0)|(consoleType==KEYBOARD_MOUSE?2:0)|(preview?4:0)|(configured?8:0);
-        buf[6]=saveStatus; memcpy(buf+8,saved+60,4); return 16;
+        memset(buf,0,16); memcpy(buf,"FGLW",4); buf[4]=3;
+        buf[5]=(custom?1:0)|(consoleType==KEYBOARD_MOUSE?2:0)|(preview?4:0)|(configured?8:0)|(bankReady?16:0);
+        buf[6]=saveStatus;buf[7]=slot;memcpy(buf+8,saved+60,4);if(bankReady)memcpy(buf+12,bank+60,4);return 16;
     }
     if(req==0x71) { memcpy(buf,saved,64); return 64; }
+    if(req>=0x7a&&req<=0x7d) {memcpy(buf,bank+(req-0x7a)*64,64);return 64;}
+    if(req>=0x75&&req<=0x78) {
+        if(queued)return 0;
+        if(req==0x75||uint32_t(millis()-stagedAt)>5000)stagedMask=0;
+        memcpy(staging+(req-0x75)*64,buf,64);stagedMask|=1<<(req-0x75);stagedAt=millis();return 0;
+    }
+    if(req==0x79) {
+        if(queued)return 0;
+        if(buf[0]||stagedMask!=15||uint32_t(millis()-stagedAt)>5000||!validBank(staging)){saveStatus=2;stagedMask=0;return 0;}
+        if(bankReady&&!memcmp(bank,staging,256)){selectSlot(bank[6]);saveStatus=0;stagedMask=0;return 0;}
+        queued=true;queuedBank=true;queuedAt=millis();saveStatus=1;return 0;
+    }
     if(req==0x72) {
         if(queued) return 0;
         if(!valid(buf)) { saveStatus=2; return 0; }
         if(configured&&!memcmp(saved,buf,64)) { saveStatus=0; custom=true; preview=false; clearLights(); return 0; }
-        memcpy(pending,buf,64); queued=true; queuedAt=millis(); saveStatus=1;
+        memcpy(pending,buf,64);queuedBank=false;stagedMask=0;queued=true;queuedAt=millis();saveStatus=1;
     }
     if(req==0x74 && buf[0]<=1) { preview=buf[0]; clearLights(); }
     return 0;

@@ -4,6 +4,7 @@ import os
 from tkinter import filedialog
 import customtkinter as ctk
 import onboard
+from app_icon import set_icon
 from firmware import write_json
 
 class FirmwareDialog:
@@ -11,6 +12,7 @@ class FirmwareDialog:
         self.app=app;self.manager=app.firmware_manager;self.image=None;self.controls=[]
         self.window=ctk.CTkToplevel(app.root);w=self.window
         w.title('Guitar setup');w.geometry('640x530');w.resizable(False,False);w.transient(app.root);w.configure(fg_color=palette['bg']);w.grid_columnconfigure(0,weight=1)
+        set_icon(w)
         def label(parent,text,size=13,muted=False):
             return ctk.CTkLabel(parent,text=text,text_color=palette['muted' if muted else 'text'],font=('Segoe UI',size),anchor='w',justify='left',wraplength=570)
         def button(parent,text,action,secondary=False,width=165):
@@ -19,7 +21,7 @@ class FirmwareDialog:
         label(w,'Guitar setup',24).grid(row=0,column=0,sticky='ew',padx=28,pady=(24,12))
         label(w,'Firmware is the software inside your guitar. Install an update to add features. For everyday colours and keys, use Save to guitar in the main window.').grid(row=1,column=0,sticky='ew',padx=28,pady=(0,20))
         button(w,'Install update',self.install_current).grid(row=2,column=0,sticky='w',padx=28)
-        label(w,'Uses your current settings. A verified recovery backup is saved first.',muted=True).grid(row=3,column=0,sticky='ew',padx=28,pady=(8,20))
+        label(w,'Includes your assigned preset slots, or current settings if no slots are assigned. Saves a recovery backup first.',muted=True).grid(row=3,column=0,sticky='ew',padx=28,pady=(8,20))
         button(w,'Undo last update',lambda:self.launch('undo'),secondary=True).grid(row=4,column=0,sticky='w',padx=28)
         label(w,'Restores the previous software and the settings from its backup.',muted=True).grid(row=5,column=0,sticky='ew',padx=28,pady=(8,20))
         self.manual_button=button(w,'Manual file options',self.toggle_manual,secondary=True)
@@ -35,7 +37,7 @@ class FirmwareDialog:
     def settings(self):
         a=self.app
         if not a.commit_all():raise ValueError('Fix the highlighted hex colour in the main window first.')
-        return onboard.encode(a.colours,a.brightness.get(),a.white_mode.get(),[v.get() for v in a.bindings],a.effect_colour)
+        return a.firmware_settings()
     def install_current(self):
         if self.app.firmware_busy or self.app.pending:return
         try:

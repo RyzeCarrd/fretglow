@@ -41,6 +41,18 @@ class FirmwareTests(unittest.TestCase):
         job=self.manager.prepare('install',self.image); fw.execute_job(job,io); return job
     def test_generated_firmware_contains_exact_settings(self):
         self.assertEqual(fw.image_settings(self.image.read_bytes(),self.base),SETTINGS)
+    def test_three_slot_image_crosses_block_boundary_and_preserves_other_data(self):
+        bank=onboard.encode_bank([SETTINGS]*3,7,2)
+        raw=fw.build_image(bank,self.base,self.full);out=fw.parse_uf2(raw);old=fw.parse_uf2(self.full)
+        self.assertEqual(fw.image_settings(raw,self.base),bank)
+        self.assertEqual(out[fw.EEPROM][:64],old[fw.EEPROM][:64])
+        self.assertEqual(out[fw.EEPROM+256][128:],old[fw.EEPROM+256][128:])
+        self.assertEqual(out[fw.EEPROM+512],old[fw.EEPROM+512])
+    def test_install_bank_retains_full_undo_backup(self):
+        bank=onboard.encode_bank([SETTINGS]*3)
+        self.image=self.manager.generate(bank,self.root/'bank.uf2');job=self.install(FakeDevice(self.full))
+        self.assertEqual(fw.FirmwareManager.state(job)['status'],'complete')
+        self.assertEqual(Path(self.manager.restore_point()['backup']).read_bytes(),self.full)
     def test_preserves_unrelated_eeprom(self):
         out=fw.parse_uf2(fw.build_image(SETTINGS,self.base,self.full))
         old=fw.parse_uf2(self.full)

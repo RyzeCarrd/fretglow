@@ -34,11 +34,12 @@ def encode(colours, brightness, mode, keys, effect_colour='#FFFFFF'):
 
 def info(dev, interface):
     result=bytes(dev.ctrl_transfer(0xa1,0x70,0,interface,16,timeout=700))
-    if len(result)!=16 or result[:4]!=b'FGLW' or result[4] not in (1,2):
+    if len(result)!=16 or result[:4]!=b'FGLW' or result[4] not in (1,2,3):
         raise RuntimeError('This guitar needs the FretGlow firmware update.')
     return result
 
 def push(dev, interface, data):
+    if len(data)==256:return push_bank(dev,interface,data)
     validate(data)
     state=info(dev,interface)
     if state[4]==1 and data[4]==2:
@@ -55,6 +56,42 @@ def push(dev, interface, data):
         if state[6]==0 and state[5]&8 and state[8:12]==data[60:64]:
             actual=bytes(dev.ctrl_transfer(0xa1,0x71,0,interface,64,timeout=700))
             if actual!=data: raise RuntimeError('Saved settings did not match. Please retry.')
-            return 'Saved on guitar · hold Start or Select for 5 seconds to switch modes'
+            return 'Saved on guitar · hold the bottom Start button for 5 seconds to change lighting'
         time.sleep(.05)
     raise RuntimeError('Save not confirmed. Reconnect and retry before relying on it.')
+
+def bank_crc(data):return zlib.crc32(data[:60]+data[64:])
+
+def validate_bank(data):
+    if len(data)!=256 or data[:5]!=b'FGB3\x01' or not 1<=data[5]<=7 or data[6]>2 or not data[5]&(1<<data[6]) or any(data[7:60]):
+        raise ValueError('Invalid guitar preset slots')
+    for i in range(3):validate(data[64+i*64:128+i*64])
+    if struct.unpack_from('<I',data,60)[0]!=bank_crc(data):raise ValueError('Guitar preset checksum failed')
+    return data
+
+def encode_bank(profiles,mask=7,start=0):
+    if len(profiles)!=3:raise ValueError('Three guitar slots are required')
+    data=bytearray(64);data[:7]=b'FGB3\x01'+bytes([mask,start])
+    data+=b''.join(profiles);struct.pack_into('<I',data,60,bank_crc(data))
+    return validate_bank(bytes(data))
+
+def read_bank(dev,interface):
+    return validate_bank(b''.join(bytes(dev.ctrl_transfer(0xa1,0x7a+i,0,interface,64,timeout=700)) for i in range(4)))
+
+def push_bank(dev,interface,data):
+    validate_bank(data)
+    if info(dev,interface)[4]<3:raise RuntimeError('Three slots need the new firmware. Open Guitar setup > Install update once.')
+    for i in range(4):
+        if dev.ctrl_transfer(0x21,0x75+i,0,interface,data[i*64:i*64+64],timeout=700)!=64:raise RuntimeError('Preset transfer interrupted. The old slots are still saved.')
+    if dev.ctrl_transfer(0x21,0x79,0,interface,b'\0',timeout=700)!=1:raise RuntimeError('The guitar did not receive the save command.')
+    deadline=time.monotonic()+4
+    while time.monotonic()<deadline:
+        state=info(dev,interface)
+        if state[6] in (2,3):raise RuntimeError('The guitar could not save its preset slots.')
+        if state[6]==0 and state[5]&16 and state[12:16]==data[60:64]:
+            if read_bank(dev,interface)!=data:raise RuntimeError('Saved slots did not match. Please retry.')
+            return 'Preset slots saved on guitar · hold both bottom buttons together for 5 seconds to cycle'
+        time.sleep(.05)
+    raise RuntimeError('Slot save not confirmed. Reconnect and retry.')
+
+def validate_settings(data):return validate_bank(data) if len(data)==256 else validate(data)
