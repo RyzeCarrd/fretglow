@@ -1,18 +1,23 @@
 """Build the Windows app and zip, including dependency notices."""
 from pathlib import Path
+import argparse
 import importlib.metadata
 import shutil
 import subprocess
 import sys
 
 root = Path(__file__).resolve().parent
+parser=argparse.ArgumentParser()
+parser.add_argument('--dist-dir',type=Path,default=root/'dist')
+output=parser.parse_args().dist_dir.resolve()
 subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--windowed',
+    '--distpath', str(output),
     '--onedir', '--name', 'FretGlow', '--collect-all', 'libusb_package',
     '--icon', 'assets/fretglow.ico',
     '--add-data', 'firmware_assets;firmware_assets',
     '--add-data', 'assets;assets',
     '--collect-data', 'customtkinter', 'fretglow.py'], cwd=root, check=True)
-app = root / 'dist' / 'FretGlow'
+app = output / 'FretGlow'
 notices = app / 'licenses'
 notices.mkdir(exist_ok=True)
 for name in ['pyusb', 'libusb-package', 'Brotli', 'customtkinter', 'darkdetect',
@@ -27,5 +32,5 @@ for file in (root / 'notices').glob('*'):
     shutil.copyfile(file, notices / file.name)
 shutil.copyfile(root / 'README.md', app / 'README.md')
 shutil.copyfile(root / 'TUTORIAL.md', app / 'TUTORIAL.md')
-shutil.make_archive(str(root / 'dist' / 'FretGlow-Windows'), 'zip', root / 'dist', 'FretGlow')
+shutil.make_archive(str(output / 'FretGlow-Windows'), 'zip', output, 'FretGlow')
 print(app / 'FretGlow.exe')

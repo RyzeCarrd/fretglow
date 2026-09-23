@@ -1,7 +1,7 @@
 # Using FretGlow
 
 1. Plug in the guitar and click **Connect**. If it is in keyboard mode, hold the **button above the bottom Start button** for five seconds to return to controller mode.
-2. Click a colour square to open the picker, or use a hex field.
+2. Click a colour square to open the full rainbow picker, or use a hex field. Every fret can use any colour: the red fret can be purple, the green fret can be blue, and so on. Pick a colour in the rainbow, adjust **Light / dark**, then click **Use colour**. The small colour squares are shortcuts.
 3. Click a key beside a fret or button, then press one key on your PC keyboard. Use **Clear binding** to remove it. F8 is reserved for stopping the app's keyboard mode.
 4. Choose a **Press effect**: **While held**, **Toggle**, or **Off**. Pick its colour too. While held restores the normal colour on release; Toggle restores it on the next press.
 5. Click **Save to guitar** to update the active guitar slot. Those colours, effects and keys stay on the guitar, even with the app closed or on another PC.

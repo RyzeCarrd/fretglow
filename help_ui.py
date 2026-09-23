@@ -8,7 +8,7 @@ STEPS=[
     ('Connect your guitar',
      'Plug the guitar into this PC and click Connect.\n\nIf it is in keyboard mode, hold the button above the bottom Start button for 5 seconds to return to controller mode.'),
     ('Choose your lighting',
-     'Click a colour square to open the picker, or type a hex code.\n\nThe press colour is the colour a fret changes to when you press it.\n\nOff: the fret keeps its normal colour.\nWhile held: the press colour lasts until you let go.\nToggle: press once for the press colour; press again to go back.\n\nPreview tries your lighting. End preview returns to the guitar\'s saved lighting.'),
+     'Click a fret colour, pick anywhere in the rainbow and click Use colour. Every fret can be any colour. The small colour squares are shortcuts; Light / dark adjusts the shade. Hex codes work too.\n\nThe press colour is what appears when you press a fret.\n\nOff: keep the normal colour.\nWhile held: show the press colour until you let go.\nToggle: press once to change colour; press again to go back.\n\nPreview tries your lighting. End preview resumes the saved lighting.'),
     ('Record your keys',
      'Click a key beside any fret or button, then press one key on your PC keyboard. Clear binding removes that assignment.\n\nThe Keyboard switch types while the app is open. F8 stops this app mode.\n\nHold the button above the bottom Start button for 5 seconds to use the saved keys without the app. Hold it again to return to controller mode.'),
     ('Save custom presets',

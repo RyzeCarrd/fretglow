@@ -28,7 +28,9 @@ class EditorTests(unittest.TestCase):
         dialog.load();self.assertEqual(self.app.bindings[0].get(),'Right Ctrl');self.assertEqual(self.app.white_mode.get(),'Off');self.assertEqual(self.app.effect_colour,'#AABBCC')
         self.assertEqual(self.app.firmware_settings(),self.app.library.bank())
     def test_picker_accepts_hex_and_only_applies_on_use(self):
-        changes=[];picker=ColourPicker(self.app,'#123456','Colour',changes.append,fretglow.THEMES['Violet'])
+        changes=[];picker=ColourPicker(self.app,'#FF0000','Red fret',changes.append,fretglow.THEMES['Violet'])
+        picker.choose(SimpleNamespace(x=309*.75,y=0));self.assertEqual(picker.colour,'#8000FF');self.assertEqual(changes,[])
+        picker.select_colour('#000000');picker.choose(SimpleNamespace(x=309*.75,y=0));self.assertEqual(picker.colour,'#8000FF')
         picker.hex.set('xyz');self.assertFalse(picker.from_hex());self.assertEqual(changes,[])
         picker.hex.set('abc');self.assertTrue(picker.from_hex());self.assertEqual(picker.colour,'#AABBCC');self.assertEqual(changes,[])
         picker.accept();self.assertEqual(changes,['#AABBCC'])
