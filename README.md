@@ -17,7 +17,9 @@ A Windows app for five-fret Santroller Pico guitars with APA102 RGB lights.
 Download the Windows ZIP from **Releases**, extract it, and open `FretGlow.exe`.
 Keep the `_internal` folder beside the executable. Close any older copy first.
 
-Click **Tutorial** in the app for a guided walkthrough, or read [the tutorial](TUTORIAL.md).
+Click **Tutorial** in the app for the searchable, step-by-step guide, or read
+[the full guide](TUTORIAL.md). It covers first setup, every save button, presets,
+controller shortcuts, keyboard modes, updates and troubleshooting.
 
 Connect the guitar, choose colours and click **Preview**. Changes then apply
 live. **Save on this PC** remembers your colours, mappings and theme in Windows. Enable
@@ -86,6 +88,9 @@ The Windows keyboard bridge also leaves game-controller input active; native fir
 keyboard mode enumerates as a USB keyboard.
 
 ## Development
+
+Tutorial text lives in `tutorial_content.py`. Run `python tutorial_content.py` to
+refresh `TUTORIAL.md`; the app build also generates it from the same content.
 
 Windows with Python 3.13:
 

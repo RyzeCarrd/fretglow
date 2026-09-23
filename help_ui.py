@@ -3,43 +3,70 @@ from pathlib import Path
 import customtkinter as ctk
 from PIL import Image
 from app_icon import set_icon
-
-STEPS=[
-    ('Connect your guitar',
-     'Plug the guitar into this PC and click Connect.\n\nIf it is in keyboard mode, hold the button above the bottom Start button for 5 seconds to return to controller mode.'),
-    ('Choose your lighting',
-     'Click a fret colour, pick anywhere in the rainbow and click Use colour. Every fret can be any colour. The small colour squares are shortcuts; Light / dark adjusts the shade. Hex codes work too.\n\nThe press colour is what appears when you press a fret.\n\nOff: keep the normal colour.\nWhile held: show the press colour until you let go.\nToggle: press once to change colour; press again to go back.\n\nPreview tries your lighting. End preview resumes the saved lighting.'),
-    ('Record your keys',
-     'Click a key beside any fret or button, then press one key on your PC keyboard. Clear binding removes that assignment.\n\nThe Keyboard switch types while the app is open. F8 stops this app mode.\n\nHold the button above the bottom Start button for 5 seconds to use the saved keys without the app. Hold it again to return to controller mode.'),
-    ('Save custom presets',
-     'Open My presets. Enter a name and click Save current as preset. This saves your colours, press effect, brightness and keys together.\n\nDrag saved presets into the three guitar slots, or select a preset and click Assign. Choose a Startup slot, then click Save slots to guitar.\n\nHold both bottom buttons together for 5 seconds to move to the next preset: 1, 2, 3, then back to 1. Empty slots are skipped. Release both before repeating. Reconnecting loads the Startup slot.\n\nLoad selected opens a preset in the main window. After editing it, use Replace selected, then Save slots to guitar.'),
-    ('Save in the right place',
-     'Save to guitar in the main window updates the active guitar slot with the colours and keys currently on screen. The other slots stay as they are.\n\nSave slots to guitar in My presets sends the whole three-slot arrangement and activates the Startup slot.\n\nSave on this PC only remembers the app\'s current choices. Named presets are saved separately when you add or replace them.\n\nSaved guitar slots work without the app, including on another PC. Hold only the bottom Start button for 5 seconds to switch between the selected preset and original lighting.'),
-    ('Updates and Undo',
-     'Firmware is the software inside your guitar. Install an update once to add support for three slots.\n\nOpen Guitar setup and click Install update. It includes your assigned slots, or your current settings if no slots are assigned, and saves a recovery backup first.\n\nUndo last update restores the previous software AND the settings from that backup. Keep USB connected until it finishes.\n\nManual file options lets you export a firmware file or install one yourself.'),
-]
+from tutorial_content import TOPICS, matching_topics
 
 class Tutorial:
     def __init__(self,app,palette):
-        self.index=0
+        self.index=0;self.palette=palette;self.wrapped=[];self.visible=list(range(len(TOPICS)))
         self.window=ctk.CTkToplevel(app.root);w=self.window
-        w.title('Tutorial');w.geometry('620x480');w.resizable(False,False);w.transient(app.root);w.configure(fg_color=palette['bg'])
+        w.title('FretGlow tutorial');w.geometry('980x740');w.minsize(860,600);w.transient(app.root);w.configure(fg_color=palette['bg'])
         set_icon(w)
-        w.grid_columnconfigure(0,weight=1);w.grid_rowconfigure(2,weight=1)
-        self.step=ctk.CTkLabel(w,text='',text_color=palette['muted'],font=('Segoe UI',12),anchor='w');self.step.grid(row=0,column=0,sticky='ew',padx=28,pady=(24,8))
-        self.title=ctk.CTkLabel(w,text='',text_color=palette['text'],font=('Segoe UI',23,'bold'),anchor='w');self.title.grid(row=1,column=0,sticky='ew',padx=28)
-        self.body=ctk.CTkLabel(w,text='',text_color=palette['text'],font=('Segoe UI',14),anchor='nw',justify='left',wraplength=555);self.body.grid(row=2,column=0,sticky='nsew',padx=28,pady=20)
-        buttons=ctk.CTkFrame(w,fg_color='transparent');buttons.grid(row=3,column=0,sticky='ew',padx=28,pady=(0,24))
-        self.back=ctk.CTkButton(buttons,text='Back',width=100,command=lambda:self.move(-1),fg_color=palette['accent'],hover_color=palette['accent_hover']);self.back.pack(side='left')
-        self.next=ctk.CTkButton(buttons,text='Next',width=100,command=lambda:self.move(1),fg_color=palette['accent'],hover_color=palette['accent_hover']);self.next.pack(side='right')
+        w.grid_columnconfigure(1,weight=1);w.grid_rowconfigure(2,weight=1)
+        sidebar=ctk.CTkFrame(w,fg_color=palette['panel'],width=230);sidebar.grid(row=0,column=0,rowspan=4,sticky='nsew',padx=(18,12),pady=18);sidebar.grid_columnconfigure(0,weight=1);sidebar.grid_rowconfigure(2,weight=1)
+        ctk.CTkLabel(sidebar,text='Tutorial',font=('Segoe UI',23,'bold'),text_color=palette['text'],anchor='w').grid(row=0,column=0,sticky='ew',padx=16,pady=(16,12))
+        search_row=ctk.CTkFrame(sidebar,fg_color='transparent');search_row.grid(row=1,column=0,sticky='ew',padx=12,pady=(0,12));search_row.grid_columnconfigure(0,weight=1)
+        ctk.CTkLabel(search_row,text='Find a topic',font=('Segoe UI',11),text_color=palette['muted'],anchor='w').grid(row=0,column=0,columnspan=2,sticky='w',pady=(0,4))
+        self.search=ctk.CTkEntry(search_row,placeholder_text='Search topics',width=155,height=34,fg_color=palette['bg'],text_color=palette['text'],border_color=palette['line']);self.search.grid(row=1,column=0,sticky='ew');self.search.bind('<KeyRelease>',lambda e:self.filter())
+        self.button(search_row,'Clear',self.clear_search,width=50,height=34,font=('Segoe UI',11)).grid(row=1,column=1,padx=(6,0))
+        self.navigation=ctk.CTkScrollableFrame(sidebar,fg_color='transparent',width=215);self.navigation.grid(row=2,column=0,sticky='nsew',padx=6)
+        self.search_hint=ctk.CTkLabel(sidebar,text='',font=('Segoe UI',11),text_color=palette['muted'],wraplength=200,justify='left',anchor='w');self.search_hint.grid(row=3,column=0,sticky='ew',padx=16,pady=(10,16))
+        self.title=ctk.CTkLabel(w,text='',text_color=palette['text'],font=('Segoe UI',25,'bold'),anchor='w',justify='left',wraplength=530);self.title.grid(row=0,column=1,sticky='ew',padx=(8,26),pady=(26,4))
+        self.summary=ctk.CTkLabel(w,text='',text_color=palette['muted'],font=('Segoe UI',13),anchor='w',justify='left',wraplength=530);self.summary.grid(row=1,column=1,sticky='ew',padx=(8,26),pady=(0,16))
+        self.content=ctk.CTkScrollableFrame(w,fg_color='transparent');self.content.grid(row=2,column=1,sticky='nsew',padx=(0,18));self.content.grid_columnconfigure(0,weight=1)
+        self.content._parent_canvas.bind('<Configure>',self.resize_text,add='+')
+        buttons=ctk.CTkFrame(w,fg_color='transparent');buttons.grid(row=3,column=1,sticky='ew',padx=(8,26),pady=(16,20));buttons.grid_columnconfigure(1,weight=1)
+        self.back=self.button(buttons,'Previous',lambda:self.move(-1),width=105);self.back.grid(row=0,column=0)
+        self.step=ctk.CTkLabel(buttons,text='',text_color=palette['muted'],font=('Segoe UI',12));self.step.grid(row=0,column=1)
+        self.next=self.button(buttons,'Next topic',lambda:self.move(1),width=105);self.next.grid(row=0,column=2)
+        self.filter()
+    def button(self,parent,text,command,**kwargs):
+        return ctk.CTkButton(parent,text=text,command=command,fg_color=self.palette['accent'],hover_color=self.palette['accent_hover'],**kwargs)
+    def filter(self):
+        self.visible=matching_topics(self.search.get())
+        for child in self.navigation.winfo_children():child.destroy()
+        self.topic_buttons={}
+        for i in self.visible:
+            button=self.button(self.navigation,f'{i+1:02}  {TOPICS[i]["title"]}',lambda i=i:self.select(i),width=213,height=36,anchor='w',font=('Segoe UI',12))
+            button.pack(fill='x',pady=2);self.topic_buttons[i]=button
+        self.search_hint.configure(text=(f'{len(self.visible)} topics found. Clear search to see all.' if self.search.get() else 'Choose a topic, or use Next topic. Scroll each page to read more.') if self.visible else 'No matching topics. Try save, colour, keyboard or update.')
+        if self.visible and self.index not in self.visible:self.index=self.visible[0]
         self.show()
+    def select(self,index):self.index=index;self.show()
+    def clear_search(self):self.search.delete(0,'end');self.filter()
     def show(self):
-        title,body=STEPS[self.index];self.title.configure(text=title);self.body.configure(text=body)
-        self.step.configure(text=f'{self.index+1} of {len(STEPS)}');self.back.configure(state='disabled' if self.index==0 else 'normal')
-        self.next.configure(text='Done' if self.index==len(STEPS)-1 else 'Next')
+        topic=TOPICS[self.index];self.title.configure(text=topic['title']);self.summary.configure(text=topic['summary'])
+        for child in self.content.winfo_children():child.destroy()
+        self.wrapped=[]
+        for i,(heading,text) in enumerate(topic['sections']):
+            card=ctk.CTkFrame(self.content,fg_color=self.palette['panel']);card.grid(row=i,column=0,sticky='ew',padx=8,pady=(0,12));card.grid_columnconfigure(0,weight=1)
+            title=ctk.CTkLabel(card,text=heading,font=('Segoe UI',16,'bold'),text_color=self.palette['text'],wraplength=480,justify='left',anchor='w');title.grid(row=0,column=0,sticky='ew',padx=18,pady=(16,8))
+            body=ctk.CTkLabel(card,text=text,font=('Segoe UI',14),text_color=self.palette['text'],wraplength=480,justify='left',anchor='w');body.grid(row=1,column=0,sticky='ew',padx=18,pady=(0,18));self.wrapped.extend([title,body])
+        for i,button in self.topic_buttons.items():button.configure(fg_color=self.palette['accent'] if i==self.index else 'transparent',text_color='#FFFFFF' if i==self.index else self.palette['text'],hover_color=self.palette['accent_hover'] if i==self.index else self.palette['hover'])
+        position=self.visible.index(self.index) if self.index in self.visible else -1
+        self.step.configure(text=f'Topic {self.index+1} of {len(TOPICS)}')
+        self.back.configure(state='normal' if position>0 else 'disabled')
+        self.next.configure(state='normal' if position>=0 else 'disabled',text='Finish' if position==len(self.visible)-1 and position>=0 else 'Next topic')
+        self.resize_text();self.content._parent_canvas.yview_moveto(0)
+    def resize_text(self,event=None):
+        width=self.content._reverse_widget_scaling(event.width if event else self.content._parent_canvas.winfo_width())
+        wrap=max(340,int(width)-60)
+        for label in self.wrapped:label.configure(wraplength=wrap)
+        self.title.configure(wraplength=wrap+20);self.summary.configure(wraplength=wrap+20)
     def move(self,amount):
-        if self.index+amount>=len(STEPS):self.window.destroy();return
-        self.index=max(0,self.index+amount);self.show()
+        if self.index not in self.visible:return
+        position=self.visible.index(self.index)+amount
+        if position>=len(self.visible):self.window.destroy();return
+        self.select(self.visible[max(0,position)])
 
 class Credits:
     def __init__(self,app,palette):

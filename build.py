@@ -5,8 +5,10 @@ import importlib.metadata
 import shutil
 import subprocess
 import sys
+from tutorial_content import write_guide
 
 root = Path(__file__).resolve().parent
+write_guide(root/'TUTORIAL.md')
 parser=argparse.ArgumentParser()
 parser.add_argument('--dist-dir',type=Path,default=root/'dist')
 output=parser.parse_args().dist_dir.resolve()
