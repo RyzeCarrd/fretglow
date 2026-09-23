@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 from concurrent.futures import ThreadPoolExecutor
@@ -235,11 +236,12 @@ class App:
         self.guitar = Guitar(); self.keyboard = Keyboard(); self.pool = ThreadPoolExecutor(max_workers=1)
         self.pending = None; self.after_job = None; self.light_future = None; self.closing = False
         self.active = False; self.last_frame = None; self.dirty = False
+        self.autosave_data=None; self.autosave_due=None; self.autosave_future=None; self.autosave_sent=None
         self.profile = profile or Path(os.environ['LOCALAPPDATA']) / 'FretGlow' / 'profile.json'
         self.firmware_manager=firmware.FirmwareManager(self.profile.parent/'firmware')
         self.firmware_busy=False; self.firmware_dialog=None
         self.tutorial=None;self.credits=None;self.preset_dialog=None
-        self.colours = CLASSIC.copy(); self.brightness = tk.IntVar(value=30)
+        self.colours = [normalise_hex(c) for c in CLASSIC]; self.brightness = tk.IntVar(value=30)
         self.white_pressed = tk.BooleanVar(value=True); self.auto_apply = tk.BooleanVar(value=False)
         self.white_mode=tk.StringVar(value='While held'); self.effect=WhiteEffect()
         self.effect_colour='#FFFFFF'; self.effect_hex=tk.StringVar(value='#FFFFFF'); self.key_capture=None
@@ -308,8 +310,8 @@ class App:
         buttons=ctk.CTkFrame(lighting,fg_color='transparent');buttons.grid(row=6,column=0,sticky='ew',padx=20,pady=(0,18))
         self.btn(buttons,'Preview',self.apply,width=123).pack(side='left')
         self.btn(buttons,'End preview',self.restore,secondary=True,width=100).pack(side='right')
-        self.btn(lighting,'Save to guitar',self.push_to_guitar,width=220).grid(row=7,column=0,sticky='ew',padx=20,pady=(0,10))
-        self.label(lighting,'Saves these settings to the active guitar slot',11,MUTED,wraplength=267).grid(row=8,column=0,sticky='w',padx=20,pady=(0,16))
+        self.guitar_save_state=tk.StringVar(value='Changes save automatically to the active guitar slot')
+        self.label(lighting,'',11,MUTED,textvariable=self.guitar_save_state,wraplength=267).grid(row=7,column=0,sticky='w',padx=20,pady=(0,16))
         keyboard=self.card(right);keyboard.grid(row=1,column=0,sticky='ew',pady=(16,0));keyboard.grid_columnconfigure(0,weight=1)
         top=ctk.CTkFrame(keyboard,fg_color='transparent');top.grid(row=0,column=0,columnspan=2,sticky='ew',padx=20,pady=(18,10))
         self.label(top,'Keyboard',17,bold=True).pack(side='left')
@@ -344,7 +346,7 @@ class App:
         ctk.CTkLabel(window,text='Press a key on your keyboard',text_color=palette['text'],font=('Segoe UI',17)).pack(pady=(24,8))
         hint=ctk.CTkLabel(window,text='One key per binding. F8 is reserved.',text_color=palette['muted'],font=('Segoe UI',12),wraplength=325);hint.pack()
         def finish(key=None):
-            if key is not None:var.set(key);self.mark_dirty();self.status.set(f'Key set to {key}')
+            if key is not None:var.set(key);self.mark_dirty();self.status.set(f'Key set to {key}');self.queue_guitar_save()
             window.grab_release();window.destroy();self.key_capture=None
         def pressed(event):
             try:key=keybinds.capture(event.keysym,event.keycode,lambda vk:self.keyboard.user.MapVirtualKeyW(vk,4))
@@ -382,12 +384,13 @@ class App:
         if changed:
             self.mark_dirty()
             if self.active:self.applied_colours=self.colours.copy()
+            self.queue_guitar_save()
         return True
     def commit_effect(self):
         try:colour=normalise_hex(self.effect_hex.get())
         except ValueError:
             self.effect_entry.configure(border_color='#C24D42');self.status.set('Effect: enter a valid hex colour.');return False
-        if colour!=self.effect_colour:self.effect_colour=colour;self.mark_dirty()
+        if colour!=self.effect_colour:self.effect_colour=colour;self.mark_dirty();self.queue_guitar_save()
         if self.effect_hex.get()!=colour:self.effect_hex.set(colour)
         self.effect_entry.configure(border_color=THEMES[self.theme.get()]['line']);self.effect_swatch.configure(fg_color=colour,hover_color=colour)
         return True
@@ -405,42 +408,71 @@ class App:
     def change_brightness(self,value):
         self.bright_text.configure(text=f'{self.brightness.get()}%');self.mark_dirty()
         if self.active:self.applied_brightness=self.brightness.get()
+        self.queue_guitar_save()
     def change_white(self):
         self.white_pressed.set(self.white_mode.get()!='Off')
         self.effect.reset(self.effect.previous)
         self.mark_dirty()
-        if not self.active:self.apply()
+        self.queue_guitar_save()
     def run(self,action,after=None):
         if self.firmware_busy:self.status.set('Firmware transfer in progress. Keep USB connected.');return
-        if self.pending or self.closing:self.status.set('Please wait for the current operation.');return
+        if self.pending or self.autosave_future or self.closing:self.status.set('Please wait for the current operation.');return
         self.pending=self.pool.submit(action);self.after_job=after;self.status.set('Working…')
     def connect(self):
         if self.firmware_busy:return
         self.active=False;self.stop_keyboard();self.connection.set('Connecting…')
         def connected():
             self.connection.set('Connected · Pico')
-            if self.auto_apply.get():self.apply()
+            if self.autosave_data is not None:self.autosave_due=time.monotonic()+1
+            elif self.auto_apply.get():self.apply()
         self.run(self.guitar.connect,connected)
     def apply(self):
         if self.firmware_busy:return
         if not self.commit_all():return
         if not self.guitar.dev:self.status.set('Connect the guitar first.');return
-        if self.pending:self.status.set('Please wait for the current operation.');return
+        if self.pending or self.autosave_future:self.status.set('Please wait for the current operation.');return
         try:self.keyboard.find()
         except Exception as e:self.status.set(str(e));return
         self.applied_colours=self.colours.copy();self.applied_brightness=self.brightness.get()
         self.effect.reset();self.last_frame=None;self.active=True;self.status.set('Lights active · changes apply live')
     def restore(self):
         self.active=False;self.last_frame=None;self.run(self.guitar.restore)
-    def push_to_guitar(self):
-        try:self.send_settings(preset_store.packet(self.current_settings()))
-        except (ValueError,KeyError,RuntimeError) as e:self.status.set(str(e))
+    def queue_guitar_save(self):
+        # Capture committed values only; incomplete hex input must never reach USB.
+        if self.firmware_busy or self.closing:return
+        self.autosave_data=preset_store.packet(dict(colours=self.colours.copy(),brightness=self.brightness.get(),mode=self.white_mode.get(),keys=[v.get() for v in self.bindings],effect_colour=self.effect_colour))
+        self.autosave_due=time.monotonic()+1
+        self.guitar_save_state.set('Waiting to save…' if self.guitar.dev else 'Not saved to guitar · connect to save changes')
+    def service_guitar_save(self,force=False):
+        if self.autosave_future and self.autosave_future.done():
+            job=self.autosave_future;sent=self.autosave_sent;self.autosave_future=None
+            try:
+                job.result()
+                if self.autosave_data==sent:
+                    self.autosave_data=None;self.autosave_due=None
+                    self.guitar_save_state.set('Saved to guitar · active slot')
+            except Exception as error:
+                self.autosave_due=None
+                self.guitar_save_state.set('Not saved · reconnect to retry')
+                self.status.set(f'Automatic save failed: {error}')
+        if self.autosave_data is None or self.autosave_due is None:return
+        if self.pending or self.autosave_future or self.light_future or self.firmware_busy:return
+        if not force and time.monotonic()<self.autosave_due:return
+        if not self.guitar.dev:
+            self.autosave_due=None;self.guitar_save_state.set('Not saved to guitar · connect to save changes');return
+        if not self.guitar.onboard:
+            self.autosave_due=None;self.guitar_save_state.set('Not saved · install the FretGlow guitar update');return
+        self.active=False;self.last_frame=None
+        self.autosave_sent=self.autosave_data
+        self.autosave_future=self.pool.submit(self.guitar.push,self.autosave_sent)
+        self.guitar_save_state.set('Saving to guitar… keep USB connected')
     def send_settings(self,data):
-        if self.firmware_busy or self.pending:raise RuntimeError('Please wait for the current operation.')
+        if self.firmware_busy or self.pending or self.autosave_future:raise RuntimeError('Please wait for the current operation.')
         if not self.guitar.dev:raise RuntimeError('Connect the guitar first.')
         self.active=False; self.last_frame=None; self.stop_keyboard()
         self.save_profile()
-        self.run(lambda:self.guitar.push(data))
+        self.autosave_data=None;self.autosave_due=None
+        self.run(lambda:self.guitar.push(data),lambda:self.guitar_save_state.set('Preset slots saved to guitar'))
     def current_settings(self):
         if not self.commit_all():raise ValueError('Fix the highlighted hex colour first.')
         return dict(colours=self.colours.copy(),brightness=self.brightness.get(),mode=self.white_mode.get(),keys=[v.get() for v in self.bindings],effect_colour=self.effect_colour)
@@ -451,7 +483,7 @@ class App:
         self.stop_keyboard();self.preset(settings['colours']);self.brightness.set(settings['brightness']);self.change_brightness(settings['brightness'])
         self.white_mode.set(settings['mode']);self.white_pressed.set(settings['mode']!='Off');self.effect_hex.set(settings['effect_colour']);self.commit_effect();self.effect.reset()
         for var,key in zip(self.bindings,settings['keys']):var.set(key)
-        self.mark_dirty();self.status.set('Preset loaded')
+        self.mark_dirty();self.queue_guitar_save();self.status.set('Preset loaded')
     def open_presets(self):
         if self.library is None:self.status.set('The preset library needs attention. Its file has been kept unchanged.');return
         if self.preset_dialog and self.preset_dialog.window.winfo_exists():self.preset_dialog.window.lift();return
@@ -532,6 +564,7 @@ class App:
             job=self.light_future;self.light_future=None
             try:job.result()
             except Exception as e:self.active=False;self.last_frame=None;self.status.set(f'Lights stopped: {e}')
+        self.service_guitar_save()
         if self.active or self.enabled.get():
             try:
                 buttons=self.keyboard.read_buttons()
@@ -539,7 +572,7 @@ class App:
                     if self.keyboard.user.GetAsyncKeyState(0x77)&0x8000:self.stop_keyboard('Stopped with F8')
                     else:self.keyboard.transition(buttons,[v.get() for v in self.bindings])
                 white_buttons=self.effect.update(buttons,self.white_mode.get()) if self.active else 0
-                if self.active and not self.pending and not self.light_future:
+                if self.active and not self.pending and not self.autosave_future and not self.light_future:
                     colours=reactive_colours(self.applied_colours,white_buttons,True,self.effect_colour)
                     frame=(tuple(colours),self.applied_brightness)
                     if frame!=self.last_frame:
@@ -552,7 +585,14 @@ class App:
         if self.firmware_busy:self.status.set('Please wait for the firmware transfer to finish. Keep USB connected.');return
         self.stop_keyboard()
         if self.dirty and not self.save_profile():return
-        self.active=False;self.closing=True;self.status.set('Restoring lights…');future=self.pool.submit(self.guitar.close)
+        self.active=False
+        if self.pending or self.light_future or self.autosave_future:
+            self.status.set('Finishing the current operation before closing…');self.root.after(100,self.close);return
+        if self.autosave_data is not None:
+            self.service_guitar_save(force=True)
+            if self.autosave_future:self.root.after(100,self.close);return
+            if not messagebox.askyesno('Changes not saved to guitar','Your settings are saved on this PC, but the guitar has not received them. Close anyway?',parent=self.root):return
+        self.closing=True;self.status.set('Restoring lights…');future=self.pool.submit(self.guitar.close)
         def finish():
             if not future.done():self.root.after(50,finish);return
             try:future.result()

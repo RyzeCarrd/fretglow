@@ -19,7 +19,7 @@ class FirmwareDialog:
             b=ctk.CTkButton(parent,text=text,command=action,width=width,height=35,corner_radius=8,font=('Segoe UI',12),fg_color=palette['line'] if secondary else palette['accent'],hover_color=palette['hover'] if secondary else palette['accent_hover'],text_color=palette['text'] if secondary else '#FFFFFF')
             self.controls.append(b);return b
         label(w,'Guitar setup',24).grid(row=0,column=0,sticky='ew',padx=28,pady=(24,12))
-        label(w,'Firmware is the software inside your guitar. Install an update to add features. For everyday colours and keys, use Save to guitar in the main window.').grid(row=1,column=0,sticky='ew',padx=28,pady=(0,20))
+        label(w,'Firmware is the software inside your guitar. Install an update to add features. Everyday colours and keys save automatically from the main window.').grid(row=1,column=0,sticky='ew',padx=28,pady=(0,20))
         button(w,'Install update',self.install_current).grid(row=2,column=0,sticky='w',padx=28)
         label(w,'Includes your assigned preset slots, or current settings if no slots are assigned. Saves a recovery backup first.',muted=True).grid(row=3,column=0,sticky='ew',padx=28,pady=(8,20))
         button(w,'Undo last update',lambda:self.launch('undo'),secondary=True).grid(row=4,column=0,sticky='w',padx=28)
@@ -39,7 +39,7 @@ class FirmwareDialog:
         if not a.commit_all():raise ValueError('Fix the highlighted hex colour in the main window first.')
         return a.firmware_settings()
     def install_current(self):
-        if self.app.firmware_busy or self.app.pending:return
+        if self.app.firmware_busy or self.app.pending or self.app.autosave_future:return
         try:
             self.image=self.manager.generate(self.settings(),self.manager.root/'generated/current-settings.uf2')
             self.app.save_profile()
@@ -62,10 +62,10 @@ class FirmwareDialog:
         if path:self.image=Path(path);self.launch('install')
     def launch(self,action):
         a=self.app
-        if a.firmware_busy or a.pending:self.status.configure(text='Please wait for the current operation.');return
+        if a.firmware_busy or a.pending or a.autosave_future:self.status.configure(text='Please wait for the current operation.');return
         try:job=self.manager.prepare(action,self.image)
         except Exception as error:self.status.configure(text=str(error));return
-        a.active=False;a.stop_keyboard();a.firmware_busy=True;self.set_busy(True)
+        a.autosave_data=None;a.autosave_due=None;a.active=False;a.stop_keyboard();a.firmware_busy=True;self.set_busy(True)
         def start():
             try:a.guitar.close()
             except Exception:pass

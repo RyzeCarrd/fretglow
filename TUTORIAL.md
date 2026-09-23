@@ -38,7 +38,7 @@ Firmware is the software running inside the controller. Installing firmware adds
 ### Your first setup
 
 1. Plug in the guitar and click Connect.
-2. Pick your colours in the main window, then click Preview.
+2. Pick your colours in the main window. Wait for Saved to guitar before unplugging.
 3. Open My presets, enter a name such as Purple, and click Save current as preset.
 4. Select that saved preset and click Assign beside slot 1.
 5. Select Startup beside that slot, then click Save slots to guitar. Keep any other assigned slots you want.
@@ -72,7 +72,7 @@ The guitar must be in controller mode. If it is currently typing letters, hold o
 
 ### What the colours on screen mean
 
-The main window shows the choices saved in this Windows app. It does not automatically copy the guitar’s saved presets back onto the screen. Changing a field also does not mean you have saved that change inside the guitar.
+The main window shows the choices saved in this Windows app. It does not automatically copy the guitar’s saved presets back onto the screen. After editing, look for Saved to guitar beneath the preview buttons. If it says Not saved, follow the message before unplugging.
 
 ### Automatic lighting on connection
 
@@ -102,11 +102,11 @@ Enter #8B5CF6 in the picker’s hex field and click Use colour. A hex code is si
 
 ### 4. See it on the guitar
 
-Click Preview. With preview active, further changes appear on the guitar as you edit. The main Brightness slider changes the overall strength of the lights. This is separate from Light / dark, which changes the shade of one chosen colour.
+Choose Use colour, or press Enter after typing a hex value. Changes save automatically after a one-second pause when connected to supported FretGlow firmware. The main Brightness slider changes the overall strength of the lights. This is separate from Light / dark, which changes the shade of one chosen colour.
 
 ### Keep your changes
 
-Preview lets you try the lights. To keep a named set, follow Make a preset. To write the current choices straight to the active guitar slot, click Save to guitar and wait for the saved message. End preview or closing the app returns lighting control to the guitar.
+Changes to colours, brightness, effects and keys automatically save together to the currently active guitar slot. Wait for Saved to guitar before unplugging. Other slots stay unchanged. To keep a named copy on your PC, follow Make a preset. Loading a preset also automatically updates the active guitar slot.
 
 
 <a id="press-effect"></a>
@@ -162,9 +162,9 @@ Inside My presets, this creates a named copy of the current colours, brightness,
 
 Inside My presets, this sends the entire displayed slot arrangement to the controller, including which slot is Startup. The startup slot becomes active immediately. This is the clearest route when you want to know exactly what is in each guitar slot.
 
-### Save to guitar
+### Automatic guitar saving
 
-In the main window, this writes the current settings to whichever guitar slot is active. It leaves other guitar slots alone. If you have not set up multiple slots, it saves one set of settings. It does not also replace a named preset in the PC library.
+There is no Save to guitar button in the main window. Committed colour, brightness, effect and key changes save after a one-second pause. Loading a preset saves its settings too. The active guitar slot is updated; other slots and named PC presets are left alone. Wait for Saved to guitar before unplugging. If disconnected or a save fails, click Connect to retry while the app is open. After restarting the app, reload your preset to send it again. Opening or connecting the app alone does not overwrite the guitar with an old PC profile.
 
 ### Example: colours at a friend’s house
 
@@ -204,7 +204,7 @@ Assign your saved presets to slots 1, 2 and 3.
 
 ### 1. Choose a saved preset
 
-Open My presets. On the left, find the named preset you want. Click its card to select it; its outline highlights.
+Open My presets. On the left, find the named preset you want. Click its card to load it into the main window and automatically save it to the active guitar slot. To arrange slots without loading a preset, drag the card directly onto a slot.
 
 ### 2. Put it in a slot
 
@@ -234,7 +234,7 @@ Change a saved preset without making another copy.
 
 ### 1. Load the right preset
 
-Open My presets, click the card you want to edit on the left, then click Load selected. Its colours, brightness, effect and keys are copied into the main window. Loading alone does not save anything new on the guitar.
+Open My presets and click the card you want to edit. Its colours, brightness, effect and keys immediately appear in the main window and automatically save to the active guitar slot. Load selected does the same thing.
 
 ### 2. Make your changes
 
@@ -242,7 +242,7 @@ Use the main window to change colours, keys, brightness or the press effect. You
 
 ### 3. Replace the saved copy
 
-Return to My presets. Select the original preset’s card again, then click Replace selected. This replaces that named preset with the settings currently shown in the main window. Make sure the selected name is the one you meant to overwrite.
+Return to My presets. Leave the original preset selected and click Replace selected. Do not click its card again after editing: that reloads the older saved copy. This replaces that named preset with the settings currently shown in the main window. Make sure the selected name is the one you meant to overwrite.
 
 ### 4. Update the guitar too
 
@@ -250,7 +250,7 @@ If that preset is assigned to a guitar slot, click Save slots to guitar and wait
 
 ### Keep the original version instead
 
-After editing, enter a new name and click Save current as preset. This creates a separate named copy. You can then assign it to a different slot. Save to guitar in the main window changes the active controller slot but does not update the PC library’s named copy.
+After editing, enter a new name and click Save current as preset. This creates a separate named copy. You can then assign it to a different slot. Automatic saving changes the active controller slot but does not update the PC library’s named copy.
 
 
 <a id="buttons"></a>
@@ -314,7 +314,7 @@ You can also assign Strum up, Strum down, Bottom Start and Above Start. Clear bi
 
 ### 3. Save the keys where you need them
 
-For use without the app, save or replace a named preset, assign it to a slot and click Save slots to guitar. Alternatively, Save to guitar updates the active slot. The keys shown in the app are only used for typing after a keyboard mode is enabled.
+For use without the app, save or replace a named preset, assign it to a slot and click Save slots to guitar. Changing a key in the main window automatically updates the active slot; wait for Saved to guitar. The keys shown in the app are only used for typing after a keyboard mode is enabled.
 
 ### If the game uses different keys
 
@@ -391,11 +391,11 @@ Open Guitar setup and click Install update. You do not need to export or choose 
 
 ### 3. After installation
 
-When the completion message appears, reconnect the app if necessary. You can use Save slots to guitar or Save to guitar for later settings changes. The firmware transfer has a separate helper so it is not dependent on keeping this tutorial open.
+When the completion message appears, reconnect the app if necessary. Later edits save automatically to the active slot. Use Save slots to guitar to send a complete slot arrangement. The firmware transfer has a separate helper so it is not dependent on keeping this tutorial open.
 
 ### What Undo last update restores
 
-Open Guitar setup and click Undo last update to restore the firmware and guitar settings from before the most recent installation. It also replaces any guitar settings saved since that backup. Undo is not a history of colour edits and does not undo every Save to guitar click.
+Open Guitar setup and click Undo last update to restore the firmware and guitar settings from before the most recent installation. It also replaces any guitar settings saved since that backup. Undo is not a history of colour edits and does not provide a separate undo for each automatic colour save.
 
 ### Keep the backup available
 
@@ -413,7 +413,7 @@ Return the guitar to controller mode by holding only the button above Start for 
 
 ### The colour changes, then disappears after closing the app
 
-You probably changed a preview. Save to guitar writes the current settings to the active slot. For a named preset, use Replace selected after editing, then Save slots to guitar. Save on this PC alone does not save the guitar’s lighting.
+Look at the automatic-save message under the preview buttons. If it says Not saved, reconnect and retry, or install the requested FretGlow firmware update. Wait for Saved to guitar before unplugging. A temporary Preview of an old PC profile is not an automatic edit. Also check which slot is Startup: unplugging loads that slot, which may differ from the one you edited.
 
 ### The guitar starts on the wrong preset
 

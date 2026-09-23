@@ -45,7 +45,7 @@ class PresetDialog:
             self.refresh();self.status.configure(text='Preset replaced on this PC. Save slots to guitar to update the controller too.')
         self.attempt(action)
     def load(self):
-        if self.selected:self.app.load_preset(self.library.get(self.selected)['settings']);self.status.configure(text='Loaded in the main window. The guitar has not been saved yet.')
+        if self.selected:self.app.load_preset(self.library.get(self.selected)['settings']);self.status.configure(text='Loaded in the main window. '+self.app.guitar_save_state.get())
         else:self.status.configure(text='Select a saved preset first.')
     def assign(self,slot,id=None):
         def action():
@@ -67,7 +67,7 @@ class PresetDialog:
             data=self.library.bank();self.app.send_settings(data);self.status.configure(text='Saving slots. The result appears in the main window.')
         self.attempt(action)
     def begin(self,event,id):
-        self.selected=id;self.drag=id;self.status.configure(text='Drag to a guitar slot, or click Load selected to edit.')
+        self.selected=id;self.drag=id;self.drag_origin=(event.x_root,event.y_root) if event else None;self.drag_moved=False;self.status.configure(text='Click to load, or drag to a guitar slot.')
         for row,row_id in self.rows:row.configure(border_color=self.p['accent'] if row_id==id else self.p['line'])
     def target_at(self,event):
         for i,frame in enumerate(self.targets):
@@ -75,6 +75,7 @@ class PresetDialog:
             if x<=event.x_root<x+frame.winfo_width() and y<=event.y_root<y+frame.winfo_height():return i
         return None
     def motion(self,event):
+        if self.drag_origin and max(abs(event.x_root-self.drag_origin[0]),abs(event.y_root-self.drag_origin[1]))>5:self.drag_moved=True
         target=self.target_at(event)
         for i,frame in enumerate(self.targets):frame.configure(border_color=self.p['accent'] if i==target else self.p['line'])
     def drop(self,event):
@@ -82,6 +83,7 @@ class PresetDialog:
         if id and target is not None:self.assign(target,id)
         else:
             for frame in self.targets:frame.configure(border_color=self.p['line'])
+            if id and not self.drag_moved:self.attempt(self.load)
     def refresh(self):
         self.start.set(str(self.library.start))
         for widget in self.list.winfo_children():widget.destroy()

@@ -21,15 +21,16 @@ Click **Tutorial** in the app for the searchable, step-by-step guide, or read
 [the full guide](TUTORIAL.md). It covers first setup, every save button, presets,
 controller shortcuts, keyboard modes, updates and troubleshooting.
 
-Connect the guitar, choose colours and click **Preview**. Changes then apply
-live. **Save on this PC** remembers your colours, mappings and theme in Windows. Enable
+Connect the guitar and choose colours. Changes save automatically after a short pause;
+wait for **Saved to guitar** before unplugging. **Save on this PC** remembers your colours, mappings and theme in Windows. Enable
 **Apply saved lights on connect** to restore your lighting when connecting.
 
 Keyboard mode sends keys to the focused application. Default fret keys are
 **A, S, K, L, M**. **F8** stops keyboard mode. Disable it before editing mappings.
 
-**Save to guitar** stores the current colours, press effect and keys in the active
-guitar slot. Use **My presets → Save slots to guitar** to save all three assigned slots.
+Colour, brightness, press-effect and key edits automatically update the active
+guitar slot. Clicking a preset loads all its settings into the main page and saves them too.
+Offline edits wait for **Connect** while the app stays open; errors are shown beneath the preview buttons. Use **My presets → Save slots to guitar** to save all three assigned slots.
 Closing the app or clicking **End preview** ends the preview and resumes the guitar's lighting.
 Three slots need the latest guitar update. Existing saved
 profiles keep their keys and default to a white effect colour until you change it.
@@ -43,7 +44,7 @@ Firmware is the software inside your guitar. Open **Guitar setup** to update it.
    checks the saved settings after restart. There is no separate file-generation step.
 2. **Undo last update** restores the full firmware and settings from before the most recent
    installation. It checks that the backup belongs to this guitar and backs up the current
-   state before restoring. Undo does not undo a subsequent **Save to guitar** by itself.
+   state before restoring. Undo does not undo individual automatic colour saves.
 3. **Manual file options** has **Export file** and **Install from file** for manual use.
 
 The transfer runs in a separate process. Keep USB connected until it finishes.
@@ -54,8 +55,8 @@ Do not delete that folder if you need Undo. Use the same Windows user account to
 Open **My presets**, enter a name and click **Save current as preset**. Drag saved
 presets into up to three guitar slots, or select a preset and click **Assign**.
 Choose a **Startup** slot and click **Save slots to guitar**. Empty slots are skipped.
-To edit a named preset, use **Load selected**, change the main-window settings,
-then **Replace selected**. Save the slots again to update the guitar.
+To edit a named preset, click its card, change the main-window settings,
+then **Replace selected** without clicking the card again (which reloads its saved copy). Save the slots again to update the guitar.
 
 Hold **both bottom buttons together** for five seconds to cycle presets 1 → 2 → 3 → 1,
 skipping empty slots. Hold only the **bottom Start button** for five seconds to toggle
